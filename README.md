@@ -20,11 +20,11 @@ AIO-ICPT는 단순한 프로토콜 클라이언트가 아니라 다음 기능을
 
 ## 진행 단계
 
-현재 단계: **Phase 1 - Modbus TCP 수직 슬라이스**
+현재 단계: **Phase 2 준비 - 프로젝트와 연결 관리 기반**
 
 | Phase | 이름 | 목표 | 상태 |
 | --- | --- | --- | --- |
-| Phase 1 | Modbus TCP 수직 슬라이스 | UI에서 Modbus TCP read를 실행하고 결과를 SQLite와 로그에 저장하는 최소 수직 흐름 검증 | 진행 중 |
+| Phase 1 | Modbus TCP 수직 슬라이스 | UI에서 Modbus TCP read를 실행하고 결과를 SQLite와 로그에 저장하는 최소 수직 흐름 검증 | 완료 |
 | Phase 2 | 프로젝트와 연결 관리 기반 | 프로젝트 단위와 connection profile 관리 기능 확장 | 예정 |
 | Phase 3 | Modbus MVP 기능 확장 | Modbus TCP/RTU 기반 read/write, data type 변환, polling 확장 | 예정 |
 | Phase 4 | 로그, 히스토리, 필터링 | 로그 조회, 필터링, 테스트 이력 분석 강화 | 예정 |
