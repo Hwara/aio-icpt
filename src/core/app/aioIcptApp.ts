@@ -24,6 +24,53 @@ export type ReadHoldingRegistersRequest = {
   };
 };
 
+export type ConnectionProfile = {
+  id: number;
+  name: string;
+  protocol: string;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TestRun = {
+  id: number;
+  connection_name: string;
+  protocol: string;
+  status: "success" | "failure";
+  response_time_ms: number;
+  started_at: string;
+};
+
+export type ProtocolLog = {
+  id: number;
+  test_run_id: number;
+  timestamp: string;
+  level: "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "RAW";
+  protocol: string;
+  direction: "TX" | "RX" | "NONE";
+  message: string;
+  raw_frame: string | null;
+};
+
+export type MeasurementRecord = {
+  id: number;
+  test_run_id: number;
+  protocol: string;
+  target: string;
+  value: number;
+  data_type: string;
+  timestamp: string;
+};
+
+export type ReadHoldingRegistersResult = {
+  testRunId: number;
+  values: number[];
+  txRawFrameHex: string;
+  rxRawFrameHex: string;
+  responseTimeMs: number;
+};
+
 /**
  * Application root for the current AIO-ICPT vertical slice.
  *
@@ -51,7 +98,7 @@ export class AioIcptApp {
   /**
    * Lists saved connection profiles for renderer display without exposing SQLite details.
    */
-  listConnectionProfiles(): any[] {
+  listConnectionProfiles(): ConnectionProfile[] {
     return this.repository.listConnectionProfiles();
   }
 
@@ -90,7 +137,7 @@ export class AioIcptApp {
   /**
    * Executes the Modbus TCP read use case and stores the resulting run data.
    */
-  async executeReadHoldingRegisters(input: ReadHoldingRegistersRequest): Promise<any> {
+  async executeReadHoldingRegisters(input: ReadHoldingRegistersRequest): Promise<ReadHoldingRegistersResult> {
     return await executeModbusTcpRead({
       repository: this.repository,
       connectionName: input.connectionName,
@@ -102,21 +149,21 @@ export class AioIcptApp {
   /**
    * Lists stored test runs for history-oriented renderer views.
    */
-  listTestRuns(): any[] {
+  listTestRuns(): TestRun[] {
     return this.repository.listTestRuns();
   }
 
   /**
    * Lists protocol logs, optionally scoped to a single stored test run.
    */
-  listProtocolLogs(testRunId?: number): any[] {
+  listProtocolLogs(testRunId?: number): ProtocolLog[] {
     return this.repository.listProtocolLogs(testRunId);
   }
 
   /**
    * Lists measurement records, optionally scoped to a single stored test run.
    */
-  listMeasurementRecords(testRunId?: number): any[] {
+  listMeasurementRecords(testRunId?: number): MeasurementRecord[] {
     return this.repository.listMeasurementRecords(testRunId);
   }
 
