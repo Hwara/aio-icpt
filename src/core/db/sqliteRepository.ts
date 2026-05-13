@@ -35,6 +35,7 @@ export class SqliteRepository {
 
   constructor(filename: string) {
     this.db = new DatabaseSync(filename);
+    this.db.exec("PRAGMA foreign_keys = ON");
   }
 
   migrate(): void {
@@ -119,6 +120,18 @@ export class SqliteRepository {
       .run(input.connectionName, input.protocol, input.status, input.responseTimeMs, new Date().toISOString());
 
     return { id: Number(result.lastInsertRowid) };
+  }
+
+  transaction<T>(fn: () => T): T {
+    this.db.exec("BEGIN");
+    try {
+      const result = fn();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   addProtocolLog(input: ProtocolLogInput): void {

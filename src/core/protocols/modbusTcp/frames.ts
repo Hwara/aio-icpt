@@ -44,9 +44,13 @@ export function parseReadHoldingRegistersResponse(
 
   const transactionId = frame.readUInt16BE(0);
   const protocolId = frame.readUInt16BE(2);
+  const length = frame.readUInt16BE(4);
   const unitId = frame.readUInt8(6);
   const functionCode = frame.readUInt8(7);
 
+  if (length !== frame.length - 6) {
+    throw new Error(`Unexpected MBAP length ${length}; received ${frame.length - 6} bytes after length field`);
+  }
   if (transactionId !== expected.transactionId) {
     throw new Error(`Unexpected transaction id ${transactionId}`);
   }

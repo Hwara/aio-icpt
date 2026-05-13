@@ -110,7 +110,14 @@ export class ModbusTcpSession {
     return await new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       let expectedLength: number | undefined;
-      const timeout = setTimeout(() => cleanupAndReject(new Error("Modbus TCP request timed out")), this.config.timeoutMs);
+      const timeout = setTimeout(() => {
+        cleanup();
+        if (this.socket) {
+          this.socket.destroy();
+          this.socket = undefined;
+        }
+        reject(new Error("Modbus TCP request timed out"));
+      }, this.config.timeoutMs);
 
       const cleanup = () => {
         clearTimeout(timeout);

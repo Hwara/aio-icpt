@@ -27,38 +27,42 @@ export async function executeModbusTcpRead(
 
   try {
     const result = await session.readHoldingRegisters(input.operation);
-    const run = input.repository.createTestRun({
-      connectionName: input.connectionName,
-      protocol: "modbus-tcp",
-      status: "success",
-      responseTimeMs: result.responseTimeMs,
-    });
-
-    input.repository.addProtocolLog({
-      testRunId: run.id,
-      level: "RAW",
-      protocol: "modbus-tcp",
-      direction: "TX",
-      message: "Read Holding Registers request",
-      rawFrame: result.txRawFrameHex,
-    });
-    input.repository.addProtocolLog({
-      testRunId: run.id,
-      level: "RAW",
-      protocol: "modbus-tcp",
-      direction: "RX",
-      message: "Read Holding Registers response",
-      rawFrame: result.rxRawFrameHex,
-    });
-
-    result.values.forEach((value, index) => {
-      input.repository.addMeasurementRecord({
-        testRunId: run.id,
+    const run = input.repository.transaction(() => {
+      const createdRun = input.repository.createTestRun({
+        connectionName: input.connectionName,
         protocol: "modbus-tcp",
-        target: `holding-register:${input.operation.startAddress + index}`,
-        value,
-        dataType: "uint16",
+        status: "success",
+        responseTimeMs: result.responseTimeMs,
       });
+
+      input.repository.addProtocolLog({
+        testRunId: createdRun.id,
+        level: "RAW",
+        protocol: "modbus-tcp",
+        direction: "TX",
+        message: "Read Holding Registers request",
+        rawFrame: result.txRawFrameHex,
+      });
+      input.repository.addProtocolLog({
+        testRunId: createdRun.id,
+        level: "RAW",
+        protocol: "modbus-tcp",
+        direction: "RX",
+        message: "Read Holding Registers response",
+        rawFrame: result.rxRawFrameHex,
+      });
+
+      result.values.forEach((value, index) => {
+        input.repository.addMeasurementRecord({
+          testRunId: createdRun.id,
+          protocol: "modbus-tcp",
+          target: `holding-register:${input.operation.startAddress + index}`,
+          value,
+          dataType: "uint16",
+        });
+      });
+
+      return createdRun;
     });
 
     return {

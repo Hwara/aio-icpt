@@ -44,17 +44,29 @@ export async function createMockModbusTcpServer(
 }
 
 function buildResponse(request: Buffer, options: MockModbusTcpServerOptions): Buffer {
+  if (request.length < 8) {
+    return Buffer.alloc(0);
+  }
+
   const transactionId = request.readUInt16BE(0);
   const protocolId = request.readUInt16BE(2);
   const unitId = request.readUInt8(6);
   const functionCode = request.readUInt8(7);
 
   if (protocolId !== 0 || unitId !== options.unitId || functionCode !== 3) {
-    return buildException(transactionId, unitId, 3, 1);
+    return buildException(transactionId, unitId, functionCode, 1);
+  }
+
+  if (request.length < 12) {
+    return buildException(transactionId, unitId, functionCode, 3);
   }
 
   const startAddress = request.readUInt16BE(8);
   const quantity = request.readUInt16BE(10);
+  if (quantity < 1 || quantity > 125 || startAddress + quantity > 0x10000) {
+    return buildException(transactionId, unitId, functionCode, 3);
+  }
+
   const byteCount = quantity * 2;
   const response = Buffer.alloc(9 + byteCount);
   response.writeUInt16BE(transactionId, 0);
@@ -65,7 +77,8 @@ function buildResponse(request: Buffer, options: MockModbusTcpServerOptions): Bu
   response.writeUInt8(byteCount, 8);
 
   for (let index = 0; index < quantity; index += 1) {
-    const value = options.holdingRegisters.get(startAddress + index) ?? 0;
+    const address = startAddress + index;
+    const value = options.holdingRegisters.get(address) ?? 0;
     response.writeUInt16BE(value, 9 + index * 2);
   }
 

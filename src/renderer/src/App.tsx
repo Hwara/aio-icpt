@@ -77,33 +77,50 @@ export function App(): React.JSX.Element {
 
   async function startMockServer(): Promise<void> {
     if (!window.aioIcpt) return;
-    const mock = await window.aioIcpt.mock.start();
-    setConfig((current) => ({ ...current, host: mock.host, port: mock.port, unitId: mock.unitId }));
-    setStatus(`Mock Modbus TCP server listening on ${mock.host}:${mock.port}`);
+    try {
+      const mock = await window.aioIcpt.mock.start();
+      setConfig((current) => ({ ...current, host: mock.host, port: mock.port, unitId: mock.unitId }));
+      setStatus(`Mock Modbus TCP server listening on ${mock.host}:${mock.port}`);
+    } catch (error) {
+      console.error(error);
+      setStatus(`Mock server start failed: ${getErrorMessage(error)}`);
+    }
   }
 
   async function saveConnection(): Promise<void> {
     if (!window.aioIcpt) return;
-    const saved = await window.aioIcpt.connections.save({
-      name: connectionName,
-      protocol: "modbus-tcp",
-      config,
-    });
-    setStatus(`Connection profile #${saved.id} saved.`);
+    try {
+      const saved = await window.aioIcpt.connections.save({
+        name: connectionName,
+        protocol: "modbus-tcp",
+        config,
+      });
+      setStatus(`Connection profile #${saved.id} saved.`);
+    } catch (error) {
+      console.error(error);
+      setStatus(`Connection save failed: ${getErrorMessage(error)}`);
+    }
   }
 
   async function readRegisters(): Promise<void> {
     if (!window.aioIcpt) return;
-    setStatus("Read Holding Registers 실행 중...");
-    const readResult = await window.aioIcpt.modbus.readHoldingRegisters({
-      connectionName,
-      connection: config,
-      operation: { startAddress, quantity },
-    });
-    const runLogs = await window.aioIcpt.logs.list(readResult.testRunId);
-    setResult(readResult);
-    setLogs(runLogs);
-    setStatus(`TestRun #${readResult.testRunId} 저장 완료. 응답 시간 ${readResult.responseTimeMs}ms.`);
+    try {
+      setStatus("Read Holding Registers 실행 중...");
+      const readResult = await window.aioIcpt.modbus.readHoldingRegisters({
+        connectionName,
+        connection: config,
+        operation: { startAddress, quantity },
+      });
+      const runLogs = await window.aioIcpt.logs.list(readResult.testRunId);
+      setResult(readResult);
+      setLogs(runLogs);
+      setStatus(`TestRun #${readResult.testRunId} 저장 완료. 응답 시간 ${readResult.responseTimeMs}ms.`);
+    } catch (error) {
+      console.error(error);
+      setResult(undefined);
+      setLogs([]);
+      setStatus(`Read Holding Registers failed: ${getErrorMessage(error)}`);
+    }
   }
 
   return (
@@ -233,4 +250,8 @@ function PanelTitle({ icon, title }: { icon: React.ReactNode; title: string }): 
       <h2>{title}</h2>
     </div>
   );
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

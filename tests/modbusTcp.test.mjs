@@ -57,3 +57,17 @@ test("reports a Modbus exception response", () => {
     /exception 2/i,
   );
 });
+
+test("rejects a response with a mismatched MBAP length", () => {
+  const response = Buffer.from("000100000006070304007b00c8", "hex");
+
+  assert.throws(
+    () =>
+      parseReadHoldingRegistersResponse(response, {
+        transactionId: 1,
+        unitId: 7,
+        quantity: 2,
+      }),
+    /MBAP length/i,
+  );
+});

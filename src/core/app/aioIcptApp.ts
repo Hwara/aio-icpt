@@ -27,6 +27,7 @@ export type ReadHoldingRegistersRequest = {
 export class AioIcptApp {
   private readonly repository: SqliteRepository;
   private mockServer: MockModbusTcpServer | undefined;
+  private startingMockServer: Promise<MockModbusTcpServer> | undefined;
 
   constructor(dataDirectory: string) {
     this.repository = new SqliteRepository(join(dataDirectory, "aio-icpt.sqlite"));
@@ -46,7 +47,7 @@ export class AioIcptApp {
       return { host: "127.0.0.1", port: this.mockServer.port, unitId: 1 };
     }
 
-    this.mockServer = await createMockModbusTcpServer({
+    this.startingMockServer ??= createMockModbusTcpServer({
       host: "127.0.0.1",
       port: 0,
       unitId: 1,
@@ -56,9 +57,17 @@ export class AioIcptApp {
         [2, 3300],
         [3, 4400],
       ]),
-    });
+    })
+      .then((mockServer) => {
+        this.mockServer = mockServer;
+        return mockServer;
+      })
+      .finally(() => {
+        this.startingMockServer = undefined;
+      });
 
-    return { host: "127.0.0.1", port: this.mockServer.port, unitId: 1 };
+    const mockServer = await this.startingMockServer;
+    return { host: "127.0.0.1", port: mockServer.port, unitId: 1 };
   }
 
   async executeReadHoldingRegisters(input: ReadHoldingRegistersRequest): Promise<any> {
@@ -83,10 +92,14 @@ export class AioIcptApp {
   }
 
   async close(): Promise<void> {
-    if (this.mockServer) {
-      await this.mockServer.close();
-      this.mockServer = undefined;
+    try {
+      if (this.mockServer) {
+        const mockServer = this.mockServer;
+        this.mockServer = undefined;
+        await mockServer.close();
+      }
+    } finally {
+      this.repository.close();
     }
-    this.repository.close();
   }
 }

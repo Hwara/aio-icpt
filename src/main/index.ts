@@ -7,7 +7,7 @@ let mainWindow: BrowserWindow | undefined;
 let aioIcpt: AioIcptApp | undefined;
 
 async function createWindow(): Promise<void> {
-  aioIcpt = new AioIcptApp(app.getPath("userData"));
+  aioIcpt ??= new AioIcptApp(app.getPath("userData"));
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -18,7 +18,7 @@ async function createWindow(): Promise<void> {
       preload: join(__dirname, "../preload/index.mjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   });
 
