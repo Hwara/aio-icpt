@@ -10,10 +10,19 @@ export type ReadHoldingRegistersResult = {
   rawFrameHex: string;
 };
 
+/**
+ * Formats a raw Modbus TCP frame for UI display and protocol logs.
+ */
 export function formatFrameHex(frame: Buffer): string {
   return [...frame].map((byte) => byte.toString(16).padStart(2, "0").toUpperCase()).join(" ");
 }
 
+/**
+ * Builds a Modbus TCP Function Code 03 request frame.
+ *
+ * The function validates the addressable fields before writing the MBAP header
+ * and PDU bytes so invalid renderer input does not reach the TCP boundary.
+ */
 export function buildReadHoldingRegistersRequest(request: ReadHoldingRegistersRequest): Buffer {
   validateUInt16("transactionId", request.transactionId);
   validateUInt8("unitId", request.unitId);
@@ -34,6 +43,12 @@ export function buildReadHoldingRegistersRequest(request: ReadHoldingRegistersRe
   return frame;
 }
 
+/**
+ * Parses and validates a Modbus TCP Function Code 03 response frame.
+ *
+ * It checks MBAP identity fields, exception responses, byte counts, and payload
+ * completeness before returning decoded register values.
+ */
 export function parseReadHoldingRegistersResponse(
   frame: Buffer,
   expected: ReadHoldingRegistersRequest,

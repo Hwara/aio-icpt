@@ -25,6 +25,12 @@ export type ReadHoldingRegistersSessionResult = {
   responseTimeMs: number;
 };
 
+/**
+ * Modbus TCP protocol session backed by a Node TCP socket.
+ *
+ * This class owns connection lifecycle, request transaction IDs, raw frame
+ * exchange, and response parsing while staying independent from Electron.
+ */
 export class ModbusTcpSession {
   private socket: net.Socket | undefined;
   private transactionId = 0;
@@ -34,6 +40,9 @@ export class ModbusTcpSession {
     this.config = config;
   }
 
+  /**
+   * Opens the TCP connection if the session is not already connected.
+   */
   async connect(): Promise<void> {
     if (this.socket && !this.socket.destroyed) {
       return;
@@ -57,6 +66,9 @@ export class ModbusTcpSession {
     });
   }
 
+  /**
+   * Gracefully closes the TCP connection when one is active.
+   */
   async disconnect(): Promise<void> {
     if (!this.socket || this.socket.destroyed) {
       return;
@@ -68,6 +80,12 @@ export class ModbusTcpSession {
     this.socket = undefined;
   }
 
+  /**
+   * Executes one Modbus TCP Read Holding Registers operation.
+   *
+   * The returned result includes decoded values and raw TX/RX frames so the
+   * Core layer can persist both measurements and debugging evidence.
+   */
   async readHoldingRegisters(
     operation: ReadHoldingRegistersOperation,
   ): Promise<ReadHoldingRegistersSessionResult> {

@@ -6,6 +6,12 @@ import { AioIcptApp } from "../core/app/aioIcptApp.ts";
 let mainWindow: BrowserWindow | undefined;
 let aioIcpt: AioIcptApp | undefined;
 
+/**
+ * Creates the renderer window and initializes the Core application root.
+ *
+ * Main owns Electron lifecycle concerns only; domain behavior stays behind
+ * AioIcptApp and is reached through IPC handlers.
+ */
 async function createWindow(): Promise<void> {
   aioIcpt ??= new AioIcptApp(app.getPath("userData"));
 
@@ -29,6 +35,9 @@ async function createWindow(): Promise<void> {
   }
 }
 
+/**
+ * Registers the narrow IPC surface exposed to the preload bridge.
+ */
 function registerIpcHandlers(): void {
   ipcMain.handle("connections:save", (_event, input) => getApp().saveConnectionProfile(input));
   ipcMain.handle("connections:list", () => getApp().listConnectionProfiles());
@@ -39,6 +48,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle("measurements:list", (_event, testRunId?: number) => getApp().listMeasurementRecords(testRunId));
 }
 
+/**
+ * Returns the initialized Core application root for IPC handlers.
+ */
 function getApp(): AioIcptApp {
   if (!aioIcpt) {
     throw new Error("AIO-ICPT app has not been initialized");

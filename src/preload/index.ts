@@ -1,5 +1,11 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+/**
+ * Renderer-facing API surface.
+ *
+ * Each method delegates to a fixed IPC channel and avoids exposing Node,
+ * Electron, filesystem, database, or TCP objects to the renderer process.
+ */
 const api = {
   connections: {
     save: (input: unknown) => ipcRenderer.invoke("connections:save", input),

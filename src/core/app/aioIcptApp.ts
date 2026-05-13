@@ -24,6 +24,13 @@ export type ReadHoldingRegistersRequest = {
   };
 };
 
+/**
+ * Application root for the current AIO-ICPT vertical slice.
+ *
+ * Main process IPC handlers call this facade instead of reaching into the
+ * repository or protocol implementations directly, keeping Electron-specific
+ * code outside the Core layer.
+ */
 export class AioIcptApp {
   private readonly repository: SqliteRepository;
   private mockServer: MockModbusTcpServer | undefined;
@@ -34,19 +41,29 @@ export class AioIcptApp {
     this.repository.migrate();
   }
 
+  /**
+   * Persists a reusable Modbus TCP connection profile through the repository boundary.
+   */
   saveConnectionProfile(input: SaveConnectionProfileRequest): { id: number } {
     return this.repository.saveConnectionProfile(input);
   }
 
+  /**
+   * Lists saved connection profiles for renderer display without exposing SQLite details.
+   */
   listConnectionProfiles(): any[] {
     return this.repository.listConnectionProfiles();
   }
 
+  /**
+   * Starts or reuses the built-in Modbus TCP mock server for local test runs.
+   */
   async startMockServer(): Promise<{ host: string; port: number; unitId: number }> {
     if (this.mockServer) {
       return { host: "127.0.0.1", port: this.mockServer.port, unitId: 1 };
     }
 
+    // Share one startup promise so concurrent IPC calls do not create multiple servers.
     this.startingMockServer ??= createMockModbusTcpServer({
       host: "127.0.0.1",
       port: 0,
@@ -70,6 +87,9 @@ export class AioIcptApp {
     return { host: "127.0.0.1", port: mockServer.port, unitId: 1 };
   }
 
+  /**
+   * Executes the Modbus TCP read use case and stores the resulting run data.
+   */
   async executeReadHoldingRegisters(input: ReadHoldingRegistersRequest): Promise<any> {
     return await executeModbusTcpRead({
       repository: this.repository,
@@ -79,18 +99,32 @@ export class AioIcptApp {
     });
   }
 
+  /**
+   * Lists stored test runs for history-oriented renderer views.
+   */
   listTestRuns(): any[] {
     return this.repository.listTestRuns();
   }
 
+  /**
+   * Lists protocol logs, optionally scoped to a single stored test run.
+   */
   listProtocolLogs(testRunId?: number): any[] {
     return this.repository.listProtocolLogs(testRunId);
   }
 
+  /**
+   * Lists measurement records, optionally scoped to a single stored test run.
+   */
   listMeasurementRecords(testRunId?: number): any[] {
     return this.repository.listMeasurementRecords(testRunId);
   }
 
+  /**
+   * Releases resources owned by the application root.
+   *
+   * Repository shutdown is always attempted even if mock server shutdown fails.
+   */
   async close(): Promise<void> {
     try {
       if (this.mockServer) {

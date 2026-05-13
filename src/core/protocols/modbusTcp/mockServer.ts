@@ -12,6 +12,12 @@ export type MockModbusTcpServer = {
   close(): Promise<void>;
 };
 
+/**
+ * Starts a local Modbus TCP mock server for deterministic development tests.
+ *
+ * The mock implements the current Function Code 03 slice and returns exception
+ * frames for unsupported or malformed requests that contain enough header data.
+ */
 export async function createMockModbusTcpServer(
   options: MockModbusTcpServerOptions,
 ): Promise<MockModbusTcpServer> {
@@ -45,6 +51,7 @@ export async function createMockModbusTcpServer(
 
 function buildResponse(request: Buffer, options: MockModbusTcpServerOptions): Buffer {
   if (request.length < 8) {
+    // Too short to recover transaction/unit/function fields for an exception frame.
     return Buffer.alloc(0);
   }
 

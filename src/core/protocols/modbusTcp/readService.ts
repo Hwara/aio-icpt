@@ -19,6 +19,12 @@ export type ExecuteModbusTcpReadResult = {
   responseTimeMs: number;
 };
 
+/**
+ * Runs the current Modbus TCP read use case end to end.
+ *
+ * The use case coordinates protocol I/O through ModbusTcpSession and persists
+ * the test run, raw logs, and decoded values through the repository boundary.
+ */
 export async function executeModbusTcpRead(
   input: ExecuteModbusTcpReadInput,
 ): Promise<ExecuteModbusTcpReadResult> {

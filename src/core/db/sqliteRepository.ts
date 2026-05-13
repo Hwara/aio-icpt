@@ -30,6 +30,12 @@ export type ConnectionProfileInput = {
   config: Record<string, unknown>;
 };
 
+/**
+ * SQLite-backed repository for the current local persistence boundary.
+ *
+ * Core use cases depend on this class instead of issuing SQL directly, so
+ * storage details remain isolated from protocol and IPC code.
+ */
 export class SqliteRepository {
   private readonly db: DatabaseSync;
 
@@ -38,6 +44,9 @@ export class SqliteRepository {
     this.db.exec("PRAGMA foreign_keys = ON");
   }
 
+  /**
+   * Creates the minimal Phase 1 tables if they do not already exist.
+   */
   migrate(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS test_runs (
@@ -83,6 +92,9 @@ export class SqliteRepository {
     `);
   }
 
+  /**
+   * Stores a protocol connection profile with protocol-specific config as JSON.
+   */
   saveConnectionProfile(input: ConnectionProfileInput): { id: number } {
     const now = new Date().toISOString();
     const result = this.db
@@ -96,6 +108,9 @@ export class SqliteRepository {
     return { id: Number(result.lastInsertRowid) };
   }
 
+  /**
+   * Returns saved connection profiles as renderer-friendly objects.
+   */
   listConnectionProfiles(): any[] {
     return this.db
       .prepare("SELECT * FROM connection_profiles ORDER BY id DESC")
@@ -110,6 +125,9 @@ export class SqliteRepository {
       }));
   }
 
+  /**
+   * Records one protocol test execution summary.
+   */
   createTestRun(input: TestRunInput): { id: number } {
     const result = this.db
       .prepare(
@@ -122,6 +140,12 @@ export class SqliteRepository {
     return { id: Number(result.lastInsertRowid) };
   }
 
+  /**
+   * Runs related repository writes atomically.
+   *
+   * Use cases call this when a test run, protocol logs, and measurements must
+   * either all persist together or all roll back together.
+   */
   transaction<T>(fn: () => T): T {
     this.db.exec("BEGIN");
     try {
@@ -134,6 +158,9 @@ export class SqliteRepository {
     }
   }
 
+  /**
+   * Appends one structured protocol log row to an existing test run.
+   */
   addProtocolLog(input: ProtocolLogInput): void {
     this.db
       .prepare(
@@ -152,6 +179,9 @@ export class SqliteRepository {
       );
   }
 
+  /**
+   * Appends one decoded measurement value to an existing test run.
+   */
   addMeasurementRecord(input: MeasurementRecordInput): void {
     this.db
       .prepare(
@@ -162,10 +192,16 @@ export class SqliteRepository {
       .run(input.testRunId, input.protocol, input.target, input.value, input.dataType, new Date().toISOString());
   }
 
+  /**
+   * Lists stored test run summaries with the newest run first.
+   */
   listTestRuns(): any[] {
     return this.db.prepare("SELECT * FROM test_runs ORDER BY id DESC").all();
   }
 
+  /**
+   * Lists protocol logs globally or for a specific test run.
+   */
   listProtocolLogs(testRunId?: number): any[] {
     if (testRunId === undefined) {
       return this.db.prepare("SELECT * FROM protocol_logs ORDER BY id ASC").all();
@@ -173,6 +209,9 @@ export class SqliteRepository {
     return this.db.prepare("SELECT * FROM protocol_logs WHERE test_run_id = ? ORDER BY id ASC").all(testRunId);
   }
 
+  /**
+   * Lists decoded measurement records globally or for a specific test run.
+   */
   listMeasurementRecords(testRunId?: number): any[] {
     if (testRunId === undefined) {
       return this.db.prepare("SELECT * FROM measurement_records ORDER BY id ASC").all();
@@ -182,6 +221,9 @@ export class SqliteRepository {
       .all(testRunId);
   }
 
+  /**
+   * Closes the underlying SQLite connection.
+   */
   close(): void {
     this.db.close();
   }
