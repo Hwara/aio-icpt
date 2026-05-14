@@ -3,8 +3,10 @@ import { join } from "node:path";
 import { SqliteRepository } from "../db/sqliteRepository.ts";
 import { createMockModbusTcpServer, type MockModbusTcpServer } from "../protocols/modbusTcp/mockServer.ts";
 import { executeModbusTcpRead } from "../protocols/modbusTcp/readService.ts";
+import { ModbusTcpSession, type ModbusTcpConnectionConfig } from "../protocols/modbusTcp/session.ts";
 
 export type SaveConnectionProfileRequest = {
+  projectId: number;
   name: string;
   protocol: "modbus-tcp";
   config: {
@@ -13,6 +15,11 @@ export type SaveConnectionProfileRequest = {
     unitId: number;
     timeoutMs: number;
   };
+};
+
+export type ProjectRequest = {
+  name: string;
+  description: string;
 };
 
 export type ReadHoldingRegistersRequest = {
@@ -26,9 +33,18 @@ export type ReadHoldingRegistersRequest = {
 
 export type ConnectionProfile = {
   id: number;
+  projectId: number;
   name: string;
   protocol: string;
   config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Project = {
+  id: number;
+  name: string;
+  description: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -71,6 +87,14 @@ export type ReadHoldingRegistersResult = {
   responseTimeMs: number;
 };
 
+export type ConnectionTestResult = {
+  ok: boolean;
+  profileId: number;
+  protocol: "modbus-tcp";
+  responseTimeMs: number;
+  message: string;
+};
+
 /**
  * Application root for the current AIO-ICPT vertical slice.
  *
@@ -89,17 +113,95 @@ export class AioIcptApp {
   }
 
   /**
+   * Creates a project as the top-level workspace for profiles and test assets.
+   */
+  createProject(input: ProjectRequest): { id: number } {
+    const project = normalizeProjectInput(input);
+    return this.repository.createProject(project);
+  }
+
+  /**
+   * Lists projects for renderer project selection.
+   */
+  listProjects(): Project[] {
+    return this.repository.listProjects();
+  }
+
+  /**
+   * Updates a project name and description.
+   */
+  updateProject(id: number, input: ProjectRequest): void {
+    const project = normalizeProjectInput(input);
+    this.repository.updateProject(id, project);
+  }
+
+  /**
+   * Deletes a project and its owned connection profiles.
+   */
+  deleteProject(id: number): void {
+    this.repository.deleteProject(id);
+  }
+
+  /**
    * Persists a reusable Modbus TCP connection profile through the repository boundary.
    */
   saveConnectionProfile(input: SaveConnectionProfileRequest): { id: number } {
-    return this.repository.saveConnectionProfile(input);
+    return this.repository.saveConnectionProfile(validateConnectionProfile(input));
+  }
+
+  /**
+   * Updates a reusable Modbus TCP connection profile.
+   */
+  updateConnectionProfile(id: number, input: SaveConnectionProfileRequest): void {
+    this.repository.updateConnectionProfile(id, validateConnectionProfile(input));
+  }
+
+  /**
+   * Deletes a reusable Modbus TCP connection profile.
+   */
+  deleteConnectionProfile(id: number): void {
+    this.repository.deleteConnectionProfile(id);
   }
 
   /**
    * Lists saved connection profiles for renderer display without exposing SQLite details.
    */
-  listConnectionProfiles(): ConnectionProfile[] {
-    return this.repository.listConnectionProfiles();
+  listConnectionProfiles(projectId?: number): ConnectionProfile[] {
+    return this.repository.listConnectionProfiles(projectId);
+  }
+
+  /**
+   * Lists recently changed connection profiles across projects.
+   */
+  listRecentConnectionProfiles(limit = 5): ConnectionProfile[] {
+    return this.repository.listRecentConnectionProfiles(limit);
+  }
+
+  /**
+   * Opens and closes a saved profile to verify that the endpoint is reachable.
+   */
+  async testConnectionProfile(profileId: number): Promise<ConnectionTestResult> {
+    const profile = this.repository.getConnectionProfile(profileId);
+    if (!profile) {
+      throw new Error("Connection profile not found");
+    }
+
+    const validated = validateConnectionProfile(profile);
+    const session = new ModbusTcpSession(validated.config);
+    const startedAt = performance.now();
+
+    try {
+      await session.connect();
+      return {
+        ok: true,
+        profileId,
+        protocol: "modbus-tcp",
+        responseTimeMs: Math.round(performance.now() - startedAt),
+        message: "Connection test succeeded.",
+      };
+    } finally {
+      await session.disconnect();
+    }
   }
 
   /**
@@ -183,4 +285,70 @@ export class AioIcptApp {
       this.repository.close();
     }
   }
+}
+
+function normalizeProjectInput(input: ProjectRequest): ProjectRequest {
+  const name = input.name.trim();
+  if (!name) {
+    throw new Error("Project name is required");
+  }
+
+  return {
+    name,
+    description: input.description.trim(),
+  };
+}
+
+function validateConnectionProfile(input: SaveConnectionProfileRequest | ConnectionProfile): SaveConnectionProfileRequest {
+  if (!Number.isInteger(input.projectId) || input.projectId <= 0) {
+    throw new Error("Project is required");
+  }
+
+  const name = input.name.trim();
+  if (!name) {
+    throw new Error("Connection profile name is required");
+  }
+
+  if (input.protocol !== "modbus-tcp") {
+    throw new Error("Only modbus-tcp connection profiles are supported in Phase 2");
+  }
+
+  const config = normalizeModbusTcpConfig(input.config);
+
+  return {
+    projectId: input.projectId,
+    name,
+    protocol: "modbus-tcp",
+    config,
+  };
+}
+
+function normalizeModbusTcpConfig(config: Record<string, unknown>): ModbusTcpConnectionConfig {
+  const host = typeof config.host === "string" ? config.host.trim() : "";
+  if (!host) {
+    throw new Error("Modbus TCP host is required");
+  }
+
+  if (!isIntegerInRange(config.port, 1, 65535)) {
+    throw new Error("Modbus TCP port must be an integer from 1 to 65535");
+  }
+
+  if (!isIntegerInRange(config.unitId, 1, 247)) {
+    throw new Error("Modbus TCP unitId must be an integer from 1 to 247");
+  }
+
+  if (!Number.isInteger(config.timeoutMs) || Number(config.timeoutMs) <= 0) {
+    throw new Error("Modbus TCP timeoutMs must be a positive integer");
+  }
+
+  return {
+    host,
+    port: Number(config.port),
+    unitId: Number(config.unitId),
+    timeoutMs: Number(config.timeoutMs),
+  };
+}
+
+function isIntegerInRange(value: unknown, min: number, max: number): boolean {
+  return Number.isInteger(value) && Number(value) >= min && Number(value) <= max;
 }

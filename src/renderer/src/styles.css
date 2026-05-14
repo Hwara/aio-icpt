@@ -42,6 +42,7 @@ input {
 
 h1,
 h2,
+h3,
 p {
   margin: 0;
 }
@@ -65,12 +66,22 @@ h1 {
   align-items: stretch;
 }
 
+.phaseTwoWorkspace {
+  grid-template-columns: minmax(260px, 320px) minmax(320px, 360px) minmax(430px, 1fr);
+}
+
 .panel {
   min-height: 620px;
   padding: 16px;
   border: 1px solid #d9e0e7;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.stackPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .panelTitle {
@@ -142,6 +153,78 @@ button:disabled {
   background: #2f6f5e;
 }
 
+.danger {
+  width: 100%;
+  border-color: #c97b73;
+  color: #7d2f29;
+  background: #fff7f6;
+}
+
+.listBox {
+  display: grid;
+  max-height: 156px;
+  gap: 8px;
+  overflow: auto;
+}
+
+.listItem {
+  width: 100%;
+  min-height: 48px;
+  justify-content: space-between;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.listItem span,
+.listItem small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listItem span {
+  font-weight: 750;
+}
+
+.listItem small {
+  max-width: 45%;
+  color: #687887;
+  font-size: 12px;
+}
+
+.listItem.selected {
+  border-color: #2f6f5e;
+  background: #edf7f2;
+}
+
+.inlineStatus {
+  min-height: 22px;
+  color: #52606d;
+  font-size: 13px;
+}
+
+.recentBlock {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+  border-top: 1px solid #e2e8ee;
+  padding-top: 12px;
+}
+
+.recentBlock h3 {
+  color: #334554;
+  font-size: 13px;
+}
+
+.recentBlock ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: #52606d;
+  font-size: 13px;
+}
+
 .resultGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -176,7 +259,7 @@ button:disabled {
 
 .logList {
   display: grid;
-  max-height: 560px;
+  max-height: 300px;
   gap: 10px;
   overflow: auto;
 }

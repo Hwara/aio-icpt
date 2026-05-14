@@ -216,8 +216,17 @@ scale factor를 도입하면 raw value와 scaled value를 분리할지 별도 AD
 
 ```mermaid
 erDiagram
+  PROJECTS {
+    integer id PK
+    text name
+    text description
+    text created_at
+    text updated_at
+  }
+
   CONNECTION_PROFILES {
     integer id PK
+    integer project_id FK
     text name
     text protocol
     text config_json
@@ -255,21 +264,40 @@ erDiagram
     text timestamp
   }
 
+  PROJECTS ||--o{ CONNECTION_PROFILES : owns
   TEST_RUNS ||--o{ PROTOCOL_LOGS : has
   TEST_RUNS ||--o{ MEASUREMENT_RECORDS : has
 ```
 
-현재 테이블은 최종 ERD의 축소판이다. `project_id`, `connection_profile_id`, `scenario_id`, `metadata_json` 같은 필드는 아직 구현되지 않았다.
+현재 테이블은 최종 ERD의 축소판이다. `projects`와 `connection_profiles.project_id`는 Phase 2에서 추가되었다. `test_runs.connection_profile_id`, `scenario_id`, `metadata_json` 같은 필드는 아직 구현되지 않았다.
 
 ## 4. 현재 테이블 정의
 
-### 4.1 connection_profiles
+### 4.1 projects
+
+목적: 테스트 작업의 최상위 단위.
+
+현재 필드:
+
+- `id`: primary key.
+- `name`: 사용자 표시 이름.
+- `description`: 프로젝트 설명.
+- `created_at`: 생성 시각.
+- `updated_at`: 수정 시각.
+
+현재 제한:
+
+- 아직 프로젝트별 test run/history 관계는 연결되지 않았다.
+- 최근 프로젝트 표시는 별도 settings 저장 없이 `updated_at` 정렬을 사용한다.
+
+### 4.2 connection_profiles
 
 목적: 재사용 가능한 프로토콜 연결 설정 저장.
 
 현재 필드:
 
 - `id`: primary key.
+- `project_id`: 소유 프로젝트.
 - `name`: 사용자 표시 이름.
 - `protocol`: 프로토콜 id. 현재 `modbus-tcp`.
 - `config_json`: 프로토콜별 연결 설정.
@@ -287,7 +315,7 @@ erDiagram
 }
 ```
 
-### 4.2 test_runs
+### 4.3 test_runs
 
 목적: 프로토콜 테스트 실행 1회를 저장.
 
@@ -302,10 +330,10 @@ erDiagram
 
 현재 제한:
 
-- 아직 project/profile/scenario 관계가 없다.
+- connection profile은 project에 연결되지만 test run은 아직 profile id를 저장하지 않는다.
 - 단일 read operation 기준의 단순 run 정보만 저장한다.
 
-### 4.3 protocol_logs
+### 4.4 protocol_logs
 
 목적: structured log와 raw frame 저장.
 
@@ -324,7 +352,7 @@ erDiagram
 
 - function code, address, transaction id는 아직 `metadata_json`으로 분리되지 않았다.
 
-### 4.4 measurement_records
+### 4.5 measurement_records
 
 목적: 프로토콜 작업 결과로 얻은 decoded value 저장.
 

@@ -1,11 +1,37 @@
-import { Cable, Database, Play, RadioTower, Save } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Cable, Database, Folder, Play, PlugZap, RadioTower, Save, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+
+type Project = {
+  id: number;
+  name: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 type ConnectionConfig = {
   host: string;
   port: number;
   unitId: number;
   timeoutMs: number;
+};
+
+type ConnectionProfile = {
+  id: number;
+  projectId: number;
+  name: string;
+  protocol: "modbus-tcp";
+  config: ConnectionConfig;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ConnectionTestResult = {
+  ok: boolean;
+  profileId: number;
+  protocol: "modbus-tcp";
+  responseTimeMs: number;
+  message: string;
 };
 
 type ReadResult = {
@@ -28,9 +54,19 @@ type ProtocolLog = {
 declare global {
   interface Window {
     aioIcpt?: {
+      projects: {
+        create(input: unknown): Promise<{ id: number }>;
+        list(): Promise<Project[]>;
+        update(id: number, input: unknown): Promise<void>;
+        delete(id: number): Promise<void>;
+      };
       connections: {
         save(input: unknown): Promise<{ id: number }>;
-        list(): Promise<unknown[]>;
+        update(id: number, input: unknown): Promise<void>;
+        delete(id: number): Promise<void>;
+        list(projectId?: number): Promise<ConnectionProfile[]>;
+        recent(limit?: number): Promise<ConnectionProfile[]>;
+        test(profileId: number): Promise<ConnectionTestResult>;
       };
       mock: {
         start(): Promise<{ host: string; port: number; unitId: number }>;
@@ -59,21 +95,134 @@ const defaultConfig: ConnectionConfig = {
 };
 
 export function App(): React.JSX.Element {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | undefined>();
+  const [projectName, setProjectName] = useState("Factory line A");
+  const [projectDescription, setProjectDescription] = useState("Commissioning workspace");
+  const [profiles, setProfiles] = useState<ConnectionProfile[]>([]);
+  const [recentProfiles, setRecentProfiles] = useState<ConnectionProfile[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState<number | undefined>();
   const [connectionName, setConnectionName] = useState("Local mock");
   const [config, setConfig] = useState<ConnectionConfig>(defaultConfig);
   const [startAddress, setStartAddress] = useState(0);
   const [quantity, setQuantity] = useState(2);
+  const [connectionTest, setConnectionTest] = useState<ConnectionTestResult | undefined>();
   const [result, setResult] = useState<ReadResult | undefined>();
   const [logs, setLogs] = useState<ProtocolLog[]>([]);
-  const [status, setStatus] = useState("Mock server를 시작하거나 실제 Modbus TCP 서버 정보를 입력하세요.");
+  const [status, setStatus] = useState("프로젝트를 만들고 연결 프로파일을 저장하세요.");
 
   const apiAvailable = Boolean(window.aioIcpt);
+  const selectedProject = projects.find((project) => project.id === selectedProjectId);
+  const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
+  const recentProjects = useMemo(() => projects.slice(0, 3), [projects]);
 
   useEffect(() => {
     if (!apiAvailable) {
       setStatus("Electron preload API가 없어서 UI 미리보기 모드로 실행 중입니다.");
+      return;
     }
+
+    void loadProjects();
+    void loadRecentProfiles();
   }, [apiAvailable]);
+
+  useEffect(() => {
+    if (!selectedProjectId || !window.aioIcpt) {
+      setProfiles([]);
+      setSelectedProfileId(undefined);
+      return;
+    }
+
+    void loadProfiles(selectedProjectId);
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (!selectedProject) {
+      return;
+    }
+
+    setProjectName(selectedProject.name);
+    setProjectDescription(selectedProject.description);
+  }, [selectedProject]);
+
+  useEffect(() => {
+    if (!selectedProfile) {
+      return;
+    }
+
+    setConnectionName(selectedProfile.name);
+    setConfig(selectedProfile.config);
+  }, [selectedProfile]);
+
+  async function loadProjects(): Promise<void> {
+    if (!window.aioIcpt) return;
+    const loadedProjects = await window.aioIcpt.projects.list();
+    setProjects(loadedProjects);
+    setSelectedProjectId((current) => current ?? loadedProjects[0]?.id);
+  }
+
+  async function loadProfiles(projectId: number): Promise<void> {
+    if (!window.aioIcpt) return;
+    const loadedProfiles = await window.aioIcpt.connections.list(projectId);
+    setProfiles(loadedProfiles);
+    setSelectedProfileId((current) =>
+      loadedProfiles.some((profile) => profile.id === current) ? current : loadedProfiles[0]?.id,
+    );
+  }
+
+  async function loadRecentProfiles(): Promise<void> {
+    if (!window.aioIcpt) return;
+    setRecentProfiles(await window.aioIcpt.connections.recent(3));
+  }
+
+  async function saveProject(): Promise<void> {
+    if (!window.aioIcpt) return;
+    try {
+      if (selectedProjectId) {
+        await window.aioIcpt.projects.update(selectedProjectId, {
+          name: projectName,
+          description: projectDescription,
+        });
+        setStatus(`Project #${selectedProjectId} updated.`);
+      } else {
+        const created = await window.aioIcpt.projects.create({
+          name: projectName,
+          description: projectDescription,
+        });
+        setSelectedProjectId(created.id);
+        setStatus(`Project #${created.id} created.`);
+      }
+      await loadProjects();
+    } catch (error) {
+      console.error(error);
+      setStatus(`Project save failed: ${getErrorMessage(error)}`);
+    }
+  }
+
+  async function createNewProject(): Promise<void> {
+    setSelectedProjectId(undefined);
+    setProjectName("New project");
+    setProjectDescription("");
+    setProfiles([]);
+    setSelectedProfileId(undefined);
+    setConnectionTest(undefined);
+  }
+
+  async function deleteProject(): Promise<void> {
+    if (!window.aioIcpt || !selectedProjectId) return;
+    try {
+      await window.aioIcpt.projects.delete(selectedProjectId);
+      setSelectedProjectId(undefined);
+      setProfiles([]);
+      setSelectedProfileId(undefined);
+      setStatus(`Project #${selectedProjectId} deleted.`);
+      await loadProjects();
+      await loadRecentProfiles();
+    } catch (error) {
+      console.error(error);
+      setStatus(`Project delete failed: ${getErrorMessage(error)}`);
+    }
+  }
 
   async function startMockServer(): Promise<void> {
     if (!window.aioIcpt) return;
@@ -88,17 +237,62 @@ export function App(): React.JSX.Element {
   }
 
   async function saveConnection(): Promise<void> {
-    if (!window.aioIcpt) return;
+    if (!window.aioIcpt || !selectedProjectId) return;
+    const input = {
+      projectId: selectedProjectId,
+      name: connectionName,
+      protocol: "modbus-tcp",
+      config,
+    };
+
     try {
-      const saved = await window.aioIcpt.connections.save({
-        name: connectionName,
-        protocol: "modbus-tcp",
-        config,
-      });
-      setStatus(`Connection profile #${saved.id} saved.`);
+      if (selectedProfileId) {
+        await window.aioIcpt.connections.update(selectedProfileId, input);
+        setStatus(`Connection profile #${selectedProfileId} updated.`);
+      } else {
+        const saved = await window.aioIcpt.connections.save(input);
+        setSelectedProfileId(saved.id);
+        setStatus(`Connection profile #${saved.id} saved.`);
+      }
+      await loadProfiles(selectedProjectId);
+      await loadRecentProfiles();
     } catch (error) {
       console.error(error);
       setStatus(`Connection save failed: ${getErrorMessage(error)}`);
+    }
+  }
+
+  async function createNewConnection(): Promise<void> {
+    setSelectedProfileId(undefined);
+    setConnectionName("New Modbus TCP profile");
+    setConfig(defaultConfig);
+    setConnectionTest(undefined);
+  }
+
+  async function deleteConnection(): Promise<void> {
+    if (!window.aioIcpt || !selectedProjectId || !selectedProfileId) return;
+    try {
+      await window.aioIcpt.connections.delete(selectedProfileId);
+      setStatus(`Connection profile #${selectedProfileId} deleted.`);
+      setSelectedProfileId(undefined);
+      await loadProfiles(selectedProjectId);
+      await loadRecentProfiles();
+    } catch (error) {
+      console.error(error);
+      setStatus(`Connection delete failed: ${getErrorMessage(error)}`);
+    }
+  }
+
+  async function testConnection(): Promise<void> {
+    if (!window.aioIcpt || !selectedProfileId) return;
+    try {
+      const testResult = await window.aioIcpt.connections.test(selectedProfileId);
+      setConnectionTest(testResult);
+      setStatus(`${testResult.message} ${testResult.responseTimeMs}ms.`);
+    } catch (error) {
+      console.error(error);
+      setConnectionTest(undefined);
+      setStatus(`Connection test failed: ${getErrorMessage(error)}`);
     }
   }
 
@@ -128,14 +322,80 @@ export function App(): React.JSX.Element {
       <header className="topbar">
         <div>
           <p className="eyebrow">AIO-ICPT</p>
-          <h1>Modbus TCP Protocol Workspace</h1>
+          <h1>Project Protocol Workspace</h1>
         </div>
         <div className="statusLine">{status}</div>
       </header>
 
-      <section className="workspace">
-        <aside className="panel">
-          <PanelTitle icon={<Cable size={18} />} title="Connection" />
+      <section className="workspace phaseTwoWorkspace">
+        <aside className="panel stackPanel">
+          <PanelTitle icon={<Folder size={18} />} title="Projects" />
+          <div className="listBox">
+            {projects.length === 0 ? (
+              <p className="empty">No projects yet.</p>
+            ) : (
+              projects.map((project) => (
+                <button
+                  key={project.id}
+                  className={project.id === selectedProjectId ? "listItem selected" : "listItem"}
+                  onClick={() => setSelectedProjectId(project.id)}
+                  title={`Select ${project.name}`}
+                >
+                  <span>{project.name}</span>
+                  <small>#{project.id}</small>
+                </button>
+              ))
+            )}
+          </div>
+
+          <label>
+            Project Name
+            <input value={projectName} onChange={(event) => setProjectName(event.target.value)} />
+          </label>
+          <label>
+            Description
+            <input value={projectDescription} onChange={(event) => setProjectDescription(event.target.value)} />
+          </label>
+          <div className="buttonRow">
+            <button onClick={createNewProject} disabled={!apiAvailable} title="New project">
+              <Folder size={16} />
+              New
+            </button>
+            <button onClick={saveProject} disabled={!apiAvailable} title="Save project">
+              <Save size={16} />
+              Save
+            </button>
+          </div>
+          <button className="danger" onClick={deleteProject} disabled={!apiAvailable || !selectedProjectId} title="Delete project">
+            <Trash2 size={16} />
+            Delete Project
+          </button>
+
+          <RecentList title="Recent Projects" items={recentProjects.map((project) => project.name)} />
+        </aside>
+
+        <section className="panel stackPanel">
+          <PanelTitle icon={<Cable size={18} />} title="Connection Profiles" />
+          <div className="listBox">
+            {!selectedProjectId ? (
+              <p className="empty">Select a project first.</p>
+            ) : profiles.length === 0 ? (
+              <p className="empty">No profiles in this project.</p>
+            ) : (
+              profiles.map((profile) => (
+                <button
+                  key={profile.id}
+                  className={profile.id === selectedProfileId ? "listItem selected" : "listItem"}
+                  onClick={() => setSelectedProfileId(profile.id)}
+                  title={`Select ${profile.name}`}
+                >
+                  <span>{profile.name}</span>
+                  <small>{profile.config.host}:{profile.config.port}</small>
+                </button>
+              ))
+            )}
+          </div>
+
           <label>
             Name
             <input value={connectionName} onChange={(event) => setConnectionName(event.target.value)} />
@@ -145,58 +405,54 @@ export function App(): React.JSX.Element {
             <input value={config.host} onChange={(event) => setConfig({ ...config, host: event.target.value })} />
           </label>
           <div className="fieldGrid">
-            <label>
-              Port
-              <input
-                type="number"
-                value={config.port}
-                onChange={(event) => setConfig({ ...config, port: Number(event.target.value) })}
-              />
-            </label>
-            <label>
-              Unit ID
-              <input
-                type="number"
-                value={config.unitId}
-                onChange={(event) => setConfig({ ...config, unitId: Number(event.target.value) })}
-              />
-            </label>
+            <NumberField label="Port" value={config.port} onChange={(port) => setConfig({ ...config, port })} />
+            <NumberField label="Unit ID" value={config.unitId} onChange={(unitId) => setConfig({ ...config, unitId })} />
           </div>
-          <label>
-            Timeout ms
-            <input
-              type="number"
-              value={config.timeoutMs}
-              onChange={(event) => setConfig({ ...config, timeoutMs: Number(event.target.value) })}
-            />
-          </label>
+          <NumberField
+            label="Timeout ms"
+            value={config.timeoutMs}
+            onChange={(timeoutMs) => setConfig({ ...config, timeoutMs })}
+          />
           <div className="buttonRow">
             <button onClick={startMockServer} disabled={!apiAvailable} title="Start mock server">
               <RadioTower size={16} />
               Mock
             </button>
-            <button onClick={saveConnection} disabled={!apiAvailable} title="Save connection profile">
+            <button onClick={saveConnection} disabled={!apiAvailable || !selectedProjectId} title="Save connection profile">
               <Save size={16} />
               Save
             </button>
           </div>
-        </aside>
+          <div className="buttonRow">
+            <button onClick={createNewConnection} disabled={!apiAvailable || !selectedProjectId} title="New connection profile">
+              <Cable size={16} />
+              New
+            </button>
+            <button
+              onClick={deleteConnection}
+              disabled={!apiAvailable || !selectedProfileId}
+              title="Delete connection profile"
+            >
+              <Trash2 size={16} />
+              Delete
+            </button>
+          </div>
+          <button className="primary" onClick={testConnection} disabled={!apiAvailable || !selectedProfileId} title="Test connection">
+            <PlugZap size={16} />
+            Test Connection
+          </button>
+          <p className="inlineStatus">
+            {connectionTest ? `${connectionTest.message} ${connectionTest.responseTimeMs}ms` : "No connection test yet."}
+          </p>
+
+          <RecentList title="Recent Connections" items={recentProfiles.map((profile) => profile.name)} />
+        </section>
 
         <section className="panel runPanel">
           <PanelTitle icon={<Play size={18} />} title="Read Holding Registers" />
           <div className="fieldGrid">
-            <label>
-              Start Address
-              <input
-                type="number"
-                value={startAddress}
-                onChange={(event) => setStartAddress(Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Quantity
-              <input type="number" value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} />
-            </label>
+            <NumberField label="Start Address" value={startAddress} onChange={setStartAddress} />
+            <NumberField label="Quantity" value={quantity} onChange={setQuantity} />
           </div>
           <button className="primary" onClick={readRegisters} disabled={!apiAvailable} title="Run read operation">
             <Play size={16} />
@@ -217,9 +473,7 @@ export function App(): React.JSX.Element {
               <strong>{result ? `#${result.testRunId}` : "-"}</strong>
             </div>
           </div>
-        </section>
 
-        <aside className="panel logPanel">
           <PanelTitle icon={<Database size={18} />} title="Raw / Structured Log" />
           <div className="logList">
             {logs.length === 0 ? (
@@ -237,7 +491,7 @@ export function App(): React.JSX.Element {
               ))
             )}
           </div>
-        </aside>
+        </section>
       </section>
     </main>
   );
@@ -248,6 +502,40 @@ function PanelTitle({ icon, title }: { icon: React.ReactNode; title: string }): 
     <div className="panelTitle">
       {icon}
       <h2>{title}</h2>
+    </div>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange(value: number): void;
+}): React.JSX.Element {
+  return (
+    <label>
+      {label}
+      <input type="number" value={value} onChange={(event) => onChange(Number(event.target.value))} />
+    </label>
+  );
+}
+
+function RecentList({ title, items }: { title: string; items: string[] }): React.JSX.Element {
+  return (
+    <div className="recentBlock">
+      <h3>{title}</h3>
+      {items.length === 0 ? (
+        <p className="empty">No recent items.</p>
+      ) : (
+        <ul>
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

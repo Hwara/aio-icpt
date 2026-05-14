@@ -336,6 +336,11 @@ MVP 제외 또는 선택 기능:
 - Electron + React + TypeScript 기반 앱 골격.
 - Main/Preload/Renderer 분리.
 - `window.aioIcpt` preload API.
+- Project CRUD.
+- 프로젝트별 Connection Profile CRUD.
+- Modbus TCP profile validation.
+- 저장된 Connection Profile 기반 connection test.
+- 최근 프로젝트/최근 연결 표시.
 - Modbus TCP Mock Server.
 - Modbus TCP Function Code 03 request/response 처리.
 - Read Holding Registers 실행.
@@ -346,7 +351,6 @@ MVP 제외 또는 선택 기능:
 
 제외된 기능:
 
-- 프로젝트 CRUD.
 - Modbus RTU.
 - Write operation.
 - 로그 필터 UI.
@@ -374,6 +378,8 @@ MVP 제외 또는 선택 기능:
 
 ### Phase 2 - 프로젝트와 연결 관리 기반
 
+상태: 진행 중.
+
 목표: 프로젝트 단위와 connection profile 관리 기능을 실제 사용 흐름으로 확장한다.
 
 포함 기능:
@@ -383,6 +389,14 @@ MVP 제외 또는 선택 기능:
 - Connection test action.
 - Profile validation.
 - 최근 프로젝트/최근 연결 표시.
+
+현재 구현 기준:
+
+- Project CRUD가 SQLite, Core, IPC, Renderer 흐름으로 연결되어 있다.
+- Connection Profile은 Project에 연결되어 저장, 조회, 수정, 삭제된다.
+- Phase 2 validation은 Modbus TCP profile을 대상으로 Core에서 수행된다.
+- 저장된 profile로 Modbus TCP connection test를 실행할 수 있다.
+- 최근 프로젝트와 최근 연결은 `updated_at` 기준 목록으로 표시한다.
 
 ### Phase 3 - Modbus MVP 기능 확장
 

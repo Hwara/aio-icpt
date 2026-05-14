@@ -24,7 +24,13 @@ export type MeasurementRecordInput = {
   dataType: string;
 };
 
+export type ProjectInput = {
+  name: string;
+  description: string;
+};
+
 export type ConnectionProfileInput = {
+  projectId: number;
   name: string;
   protocol: string;
   config: Record<string, unknown>;
@@ -49,6 +55,14 @@ export class SqliteRepository {
    */
   migrate(): void {
     this.db.exec(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS test_runs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         connection_name TEXT NOT NULL,
@@ -83,13 +97,76 @@ export class SqliteRepository {
 
       CREATE TABLE IF NOT EXISTS connection_profiles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL,
         name TEXT NOT NULL,
         protocol TEXT NOT NULL,
         config_json TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
       );
     `);
+    this.addProjectIdToLegacyConnectionProfiles();
+  }
+
+  /**
+   * Creates a project as the top-level unit for profiles and test assets.
+   */
+  createProject(input: ProjectInput): { id: number } {
+    const now = new Date().toISOString();
+    const result = this.db
+      .prepare(
+        `INSERT INTO projects
+          (name, description, created_at, updated_at)
+          VALUES (?, ?, ?, ?)`,
+      )
+      .run(input.name, input.description, now, now);
+
+    return { id: Number(result.lastInsertRowid) };
+  }
+
+  /**
+   * Lists projects with the most recently changed project first.
+   */
+  listProjects(): any[] {
+    return this.db
+      .prepare("SELECT * FROM projects ORDER BY updated_at DESC, id DESC")
+      .all()
+      .map((project: any) => ({
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        createdAt: project.created_at,
+        updatedAt: project.updated_at,
+      }));
+  }
+
+  /**
+   * Updates a project display name and description.
+   */
+  updateProject(id: number, input: ProjectInput): void {
+    const result = this.db
+      .prepare(
+        `UPDATE projects
+          SET name = ?, description = ?, updated_at = ?
+          WHERE id = ?`,
+      )
+      .run(input.name, input.description, new Date().toISOString(), id);
+
+    if (result.changes === 0) {
+      throw new Error("Project not found");
+    }
+  }
+
+  /**
+   * Deletes a project and its owned connection profiles.
+   */
+  deleteProject(id: number): void {
+    const result = this.db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+
+    if (result.changes === 0) {
+      throw new Error("Project not found");
+    }
   }
 
   /**
@@ -100,23 +177,94 @@ export class SqliteRepository {
     const result = this.db
       .prepare(
         `INSERT INTO connection_profiles
-          (name, protocol, config_json, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?)`,
+          (project_id, name, protocol, config_json, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(input.name, input.protocol, JSON.stringify(input.config), now, now);
+      .run(input.projectId, input.name, input.protocol, JSON.stringify(input.config), now, now);
 
     return { id: Number(result.lastInsertRowid) };
   }
 
   /**
-   * Returns saved connection profiles as renderer-friendly objects.
+   * Updates an existing protocol connection profile.
    */
-  listConnectionProfiles(): any[] {
+  updateConnectionProfile(id: number, input: ConnectionProfileInput): void {
+    const result = this.db
+      .prepare(
+        `UPDATE connection_profiles
+          SET project_id = ?, name = ?, protocol = ?, config_json = ?, updated_at = ?
+          WHERE id = ?`,
+      )
+      .run(input.projectId, input.name, input.protocol, JSON.stringify(input.config), new Date().toISOString(), id);
+
+    if (result.changes === 0) {
+      throw new Error("Connection profile not found");
+    }
+  }
+
+  /**
+   * Deletes a saved protocol connection profile.
+   */
+  deleteConnectionProfile(id: number): void {
+    const result = this.db.prepare("DELETE FROM connection_profiles WHERE id = ?").run(id);
+
+    if (result.changes === 0) {
+      throw new Error("Connection profile not found");
+    }
+  }
+
+  /**
+   * Returns saved connection profiles for one project as renderer-friendly objects.
+   */
+  listConnectionProfiles(projectId?: number): any[] {
+    const rows =
+      projectId === undefined
+        ? this.db.prepare("SELECT * FROM connection_profiles ORDER BY updated_at DESC, id DESC").all()
+        : this.db
+            .prepare("SELECT * FROM connection_profiles WHERE project_id = ? ORDER BY updated_at DESC, id DESC")
+            .all(projectId);
+
+    return rows.map((profile: any) => ({
+      id: profile.id,
+      projectId: profile.project_id,
+      name: profile.name,
+      protocol: profile.protocol,
+      config: JSON.parse(profile.config_json),
+      createdAt: profile.created_at,
+      updatedAt: profile.updated_at,
+    }));
+  }
+
+  /**
+   * Returns one connection profile by id.
+   */
+  getConnectionProfile(id: number): any | undefined {
+    const profile: any = this.db.prepare("SELECT * FROM connection_profiles WHERE id = ?").get(id);
+    if (!profile) {
+      return undefined;
+    }
+
+    return {
+      id: profile.id,
+      projectId: profile.project_id,
+      name: profile.name,
+      protocol: profile.protocol,
+      config: JSON.parse(profile.config_json),
+      createdAt: profile.created_at,
+      updatedAt: profile.updated_at,
+    };
+  }
+
+  /**
+   * Lists the most recently changed connection profiles across projects.
+   */
+  listRecentConnectionProfiles(limit: number): any[] {
     return this.db
-      .prepare("SELECT * FROM connection_profiles ORDER BY id DESC")
-      .all()
+      .prepare("SELECT * FROM connection_profiles ORDER BY updated_at DESC, id DESC LIMIT ?")
+      .all(limit)
       .map((profile: any) => ({
         id: profile.id,
+        projectId: profile.project_id,
         name: profile.name,
         protocol: profile.protocol,
         config: JSON.parse(profile.config_json),
@@ -226,5 +374,26 @@ export class SqliteRepository {
    */
   close(): void {
     this.db.close();
+  }
+
+  private addProjectIdToLegacyConnectionProfiles(): void {
+    const columns: any[] = this.db.prepare("PRAGMA table_info(connection_profiles)").all();
+    if (columns.some((column) => column.name === "project_id")) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const result = this.db
+      .prepare(
+        `INSERT INTO projects
+          (name, description, created_at, updated_at)
+          VALUES (?, ?, ?, ?)`,
+      )
+      .run("Migrated Phase 1 project", "Automatically created for existing connection profiles.", now, now);
+
+    this.db.exec("ALTER TABLE connection_profiles ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE");
+    this.db
+      .prepare("UPDATE connection_profiles SET project_id = ? WHERE project_id IS NULL")
+      .run(Number(result.lastInsertRowid));
   }
 }
