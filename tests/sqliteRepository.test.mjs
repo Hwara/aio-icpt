@@ -1,5 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { SqliteRepository } from "../src/core/db/sqliteRepository.ts";
 
@@ -121,6 +125,133 @@ test("touches the owning project when a connection profile is created, updated, 
     assert.ok(afterDelete.updatedAt > afterUpdate.updatedAt);
   } finally {
     repository.close();
+  }
+});
+
+test("migrates legacy connection profiles without project_id once", () => {
+  const directory = mkdtempSync(join(tmpdir(), "aio-icpt-legacy-"));
+  const filename = join(directory, "aio-icpt.sqlite");
+  const legacyDb = new DatabaseSync(filename);
+
+  try {
+    legacyDb.exec(`
+      CREATE TABLE connection_profiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        protocol TEXT NOT NULL,
+        config_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+    legacyDb
+      .prepare(
+        `INSERT INTO connection_profiles
+          (name, protocol, config_json, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "Legacy PLC",
+        "modbus-tcp",
+        JSON.stringify({ host: "127.0.0.1", port: 1502, unitId: 1, timeoutMs: 1000 }),
+        "2026-06-02T00:00:00.000Z",
+        "2026-06-02T00:00:00.000Z",
+      );
+    legacyDb.close();
+
+    const repository = new SqliteRepository(filename);
+    repository.migrate();
+
+    const projects = repository.listProjects();
+    const profiles = repository.listConnectionProfiles(projects[0].id);
+
+    assert.equal(projects.length, 1);
+    assert.equal(projects[0].name, "Migrated Phase 1 project");
+    assert.equal(profiles.length, 1);
+    assert.equal(profiles[0].name, "Legacy PLC");
+
+    repository.migrate();
+
+    assert.equal(repository.listProjects().length, 1);
+    assert.equal(repository.listConnectionProfiles(projects[0].id).length, 1);
+    repository.close();
+  } finally {
+    try {
+      legacyDb.close();
+    } catch {
+      // The connection is already closed after the legacy schema is created.
+    }
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("backfills legacy connection profiles when project_id column exists with null rows", () => {
+  const directory = mkdtempSync(join(tmpdir(), "aio-icpt-partial-"));
+  const filename = join(directory, "aio-icpt.sqlite");
+  const db = new DatabaseSync(filename);
+
+  try {
+    db.exec(`
+      CREATE TABLE projects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE connection_profiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER,
+        name TEXT NOT NULL,
+        protocol TEXT NOT NULL,
+        config_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+      );
+    `);
+    db
+      .prepare(
+        `INSERT INTO connection_profiles
+          (project_id, name, protocol, config_json, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        null,
+        "Partially migrated PLC",
+        "modbus-tcp",
+        JSON.stringify({ host: "127.0.0.1", port: 1502, unitId: 1, timeoutMs: 1000 }),
+        "2026-06-02T00:00:00.000Z",
+        "2026-06-02T00:00:00.000Z",
+      );
+    db.close();
+
+    const repository = new SqliteRepository(filename);
+    try {
+      repository.migrate();
+
+      const projects = repository.listProjects();
+      const profiles = repository.listConnectionProfiles(projects[0].id);
+
+      assert.equal(projects.length, 1);
+      assert.equal(profiles.length, 1);
+      assert.equal(profiles[0].name, "Partially migrated PLC");
+
+      repository.migrate();
+
+      assert.equal(repository.listProjects().length, 1);
+      assert.equal(repository.listConnectionProfiles(projects[0].id).length, 1);
+    } finally {
+      repository.close();
+    }
+  } finally {
+    try {
+      db.close();
+    } catch {
+      // The connection is already closed before SqliteRepository opens it.
+    }
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 

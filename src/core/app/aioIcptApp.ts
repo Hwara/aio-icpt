@@ -224,6 +224,14 @@ export class AioIcptApp {
         responseTimeMs: Math.round(performance.now() - startedAt),
         message: "Connection test succeeded.",
       };
+    } catch (error) {
+      return {
+        ok: false,
+        profileId,
+        protocol: "modbus-tcp",
+        responseTimeMs: Math.round(performance.now() - startedAt),
+        message: `Connection test failed: ${getErrorMessage(error)}`,
+      };
     } finally {
       await session.disconnect();
     }
@@ -466,6 +474,10 @@ export function parseProjectSettingsJson(content: string): unknown {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function normalizeModbusTcpConfig(config: Record<string, unknown>): ModbusTcpConnectionConfig {

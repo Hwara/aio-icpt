@@ -408,11 +408,10 @@ erDiagram
 
 - `unit`, `raw_value`, `metadata_json`은 아직 없다.
 
-## 5. 향후 추가 테이블
+## 5. 향후 추가/확장 테이블
 
-우선순위가 높은 추가 테이블:
+`projects`는 이미 현재 schema에 포함되어 있다. 아래 목록은 아직 구현되지 않았거나 이후 Phase에서 확장될 테이블이다.
 
-- `projects`
 - `devices`
 - `test_scenarios`
 - `register_maps`
@@ -420,9 +419,8 @@ erDiagram
 - `user_settings`
 - `exports`
 
-추가 시점:
+추가 또는 확장 시점:
 
-- `projects`: Phase 2.
 - `devices`: multi-device sequential request, 장비별 상태, 장비별 register map 연결 요구가 구체화되는 시점.
 - `test_scenarios`: Phase 5.
 - `register_maps`, `register_map_items`: Data Monitor 또는 Modbus data type 확장 시점.

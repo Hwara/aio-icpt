@@ -425,23 +425,33 @@ export class SqliteRepository {
 
   private addProjectIdToLegacyConnectionProfiles(): void {
     const columns: any[] = this.db.prepare("PRAGMA table_info(connection_profiles)").all();
-    if (columns.some((column) => column.name === "project_id")) {
+    const hasProjectId = columns.some((column) => column.name === "project_id");
+    const orphanCount = hasProjectId
+      ? (this.db.prepare("SELECT COUNT(*) AS count FROM connection_profiles WHERE project_id IS NULL").get() as any).count
+      : 0;
+
+    if (hasProjectId && orphanCount === 0) {
       return;
     }
 
-    const now = new Date().toISOString();
-    const result = this.db
-      .prepare(
-        `INSERT INTO projects
-          (name, description, created_at, updated_at)
-          VALUES (?, ?, ?, ?)`,
-      )
-      .run("Migrated Phase 1 project", "Automatically created for existing connection profiles.", now, now);
+    this.transaction(() => {
+      const now = new Date().toISOString();
+      const result = this.db
+        .prepare(
+          `INSERT INTO projects
+            (name, description, created_at, updated_at)
+            VALUES (?, ?, ?, ?)`,
+        )
+        .run("Migrated Phase 1 project", "Automatically created for existing connection profiles.", now, now);
 
-    this.db.exec("ALTER TABLE connection_profiles ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE");
-    this.db
-      .prepare("UPDATE connection_profiles SET project_id = ? WHERE project_id IS NULL")
-      .run(Number(result.lastInsertRowid));
+      if (!hasProjectId) {
+        this.db.exec("ALTER TABLE connection_profiles ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE");
+      }
+
+      this.db
+        .prepare("UPDATE connection_profiles SET project_id = ? WHERE project_id IS NULL")
+        .run(Number(result.lastInsertRowid));
+    });
   }
 
   private touchProject(projectId: number): void {

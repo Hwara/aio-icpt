@@ -158,6 +158,36 @@ test("tests a saved Modbus TCP connection profile against the mock server", asyn
   }
 });
 
+test("returns a failed connection test result when the endpoint is unreachable", async () => {
+  const { app, close } = createTempApp();
+
+  try {
+    const project = app.createProject({ name: "Factory line A", description: "" });
+    const profile = app.saveConnectionProfile({
+      projectId: project.id,
+      name: "Offline PLC",
+      protocol: "modbus-tcp",
+      config: {
+        host: "127.0.0.1",
+        port: 1,
+        unitId: 1,
+        timeoutMs: 100,
+      },
+    });
+
+    const result = await app.testConnectionProfile(profile.id);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.profileId, profile.id);
+    assert.equal(result.protocol, "modbus-tcp");
+    assert.equal(typeof result.responseTimeMs, "number");
+    assert.match(result.message, /Connection test failed/);
+    assert.equal(app.listTestRuns().length, 0);
+  } finally {
+    await close();
+  }
+});
+
 test("rejects connection tests for missing profiles", async () => {
   const { app, close } = createTempApp();
 
@@ -185,6 +215,13 @@ test("exports project settings without database identifiers or run history", asy
       protocol: "modbus-tcp",
       config: { host: "192.168.0.11", port: 502, unitId: 2, timeoutMs: 1500 },
     });
+    const otherProject = app.createProject({ name: "Factory line B", description: "" });
+    app.saveConnectionProfile({
+      projectId: otherProject.id,
+      name: "Other PLC",
+      protocol: "modbus-tcp",
+      config: { host: "192.168.99.99", port: 502, unitId: 1, timeoutMs: 1000 },
+    });
 
     const exported = app.exportProjectSettings(project.id);
 
@@ -195,6 +232,8 @@ test("exports project settings without database identifiers or run history", asy
     assert.equal(exported.connectionProfiles[0].name, "PLC 2");
     assert.equal(exported.connectionProfiles[0].protocol, "modbus-tcp");
     assert.equal(exported.connectionProfiles[0].config.host, "192.168.0.11");
+    assert.equal(exported.connectionProfiles.some((profile) => profile.name === "Other PLC"), false);
+    assert.equal(exported.connectionProfiles.some((profile) => profile.config.host === "192.168.99.99"), false);
     assert.equal(typeof exported.exportedAt, "string");
     assert.equal("id" in exported.project, false);
     assert.equal("projectId" in exported.connectionProfiles[0], false);
