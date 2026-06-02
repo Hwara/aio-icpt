@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { AioIcptApp } from "../src/core/app/aioIcptApp.ts";
+import { AioIcptApp, parseProjectSettingsJson } from "../src/core/app/aioIcptApp.ts";
 
 function createTempApp() {
   const directory = mkdtempSync(join(tmpdir(), "aio-icpt-"));
@@ -204,6 +204,32 @@ test("exports project settings without database identifiers or run history", asy
   }
 });
 
+test("rejects project settings export when a stored profile has invalid config", async () => {
+  const { app, close } = createTempApp();
+
+  try {
+    const project = app.createProject({ name: "Factory line A", description: "" });
+    app.saveConnectionProfile({
+      projectId: project.id,
+      name: "PLC 1",
+      protocol: "modbus-tcp",
+      config: { host: "192.168.0.10", port: 502, unitId: 1, timeoutMs: 1000 },
+    });
+
+    const profile = app.listConnectionProfiles(project.id)[0];
+    app.repository.updateConnectionProfile(profile.id, {
+      projectId: project.id,
+      name: "PLC 1",
+      protocol: "modbus-tcp",
+      config: { host: "192.168.0.10", port: 70000, unitId: 1, timeoutMs: 1000 },
+    });
+
+    assert.throws(() => app.exportProjectSettings(project.id), /port must be an integer from 1 to 65535/);
+  } finally {
+    await close();
+  }
+});
+
 test("imports project settings as a new project without overwriting existing data", async () => {
   const { app, close } = createTempApp();
 
@@ -279,4 +305,44 @@ test("rejects imported project settings with unsupported schema or invalid profi
   } finally {
     await close();
   }
+});
+
+test("requires a project id when listing connection profiles through Core", async () => {
+  const { app, close } = createTempApp();
+
+  try {
+    assert.throws(() => app.listConnectionProfiles(), /Project is required/);
+  } finally {
+    await close();
+  }
+});
+
+test("clamps recent connection profile limits in Core", async () => {
+  const { app, close } = createTempApp();
+
+  try {
+    const project = app.createProject({ name: "Factory line A", description: "" });
+    for (let index = 0; index < 25; index += 1) {
+      app.saveConnectionProfile({
+        projectId: project.id,
+        name: `PLC ${index}`,
+        protocol: "modbus-tcp",
+        config: { host: `192.168.0.${index + 1}`, port: 502, unitId: 1, timeoutMs: 1000 },
+      });
+    }
+
+    assert.equal(app.listRecentConnectionProfiles(undefined).length, 5);
+    assert.equal(app.listRecentConnectionProfiles(0).length, 1);
+    assert.equal(app.listRecentConnectionProfiles(-1).length, 1);
+    assert.equal(app.listRecentConnectionProfiles(9999).length, 20);
+  } finally {
+    await close();
+  }
+});
+
+test("parses project settings JSON with a clear error for invalid JSON", () => {
+  assert.throws(
+    () => parseProjectSettingsJson("{not-json"),
+    /Selected file is not a valid JSON project settings file/,
+  );
 });

@@ -1,8 +1,8 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions, type SaveDialogOptions } from "electron";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { AioIcptApp } from "../core/app/aioIcptApp.ts";
+import { AioIcptApp, parseProjectSettingsJson } from "../core/app/aioIcptApp.ts";
 
 let mainWindow: BrowserWindow | undefined;
 let aioIcpt: AioIcptApp | undefined;
@@ -49,7 +49,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle("connections:save", (_event, input) => getApp().saveConnectionProfile(input));
   ipcMain.handle("connections:update", (_event, id: number, input) => getApp().updateConnectionProfile(id, input));
   ipcMain.handle("connections:delete", (_event, id: number) => getApp().deleteConnectionProfile(id));
-  ipcMain.handle("connections:list", (_event, projectId?: number) => getApp().listConnectionProfiles(projectId));
+  ipcMain.handle("connections:list", (_event, projectId: number) => getApp().listConnectionProfiles(projectId));
   ipcMain.handle("connections:recent", (_event, limit?: number) => getApp().listRecentConnectionProfiles(limit));
   ipcMain.handle("connections:test", (_event, profileId: number) => getApp().testConnectionProfile(profileId));
   ipcMain.handle("mock:start", () => getApp().startMockServer());
@@ -62,20 +62,21 @@ function registerIpcHandlers(): void {
 /**
  * Lets the user choose where to write a portable project settings JSON file.
  */
-async function exportProjectSettings(projectId: number): Promise<{ canceled: boolean; filePath?: string }> {
+async function exportProjectSettings(projectId: number): Promise<{ canceled: boolean }> {
   const settings = getApp().exportProjectSettings(projectId);
-  const result = await dialog.showSaveDialog(mainWindow, {
+  const options: SaveDialogOptions = {
     title: "Export Project Settings",
     defaultPath: `${toSafeFilename(settings.project.name)}.aio-icpt-project.json`,
     filters: [{ name: "AIO-ICPT Project Settings", extensions: ["json"] }],
-  });
+  };
+  const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options);
 
   if (result.canceled || !result.filePath) {
     return { canceled: true };
   }
 
   await writeFile(result.filePath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
-  return { canceled: false, filePath: result.filePath };
+  return { canceled: false };
 }
 
 /**
@@ -85,18 +86,19 @@ async function exportProjectSettings(projectId: number): Promise<{ canceled: boo
 async function importProjectSettings(): Promise<
   { canceled: true } | { canceled: false; projectId: number; connectionProfileIds: number[] }
 > {
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const options: OpenDialogOptions = {
     title: "Import Project Settings",
     properties: ["openFile"],
     filters: [{ name: "AIO-ICPT Project Settings", extensions: ["json"] }],
-  });
+  };
+  const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
 
   if (result.canceled || result.filePaths.length === 0) {
     return { canceled: true };
   }
 
   const content = await readFile(result.filePaths[0], "utf8");
-  const imported = getApp().importProjectSettings(JSON.parse(content));
+  const imported = getApp().importProjectSettings(parseProjectSettingsJson(content));
   return { canceled: false, ...imported };
 }
 

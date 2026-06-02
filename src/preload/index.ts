@@ -19,7 +19,7 @@ const api = {
     save: (input: unknown) => ipcRenderer.invoke("connections:save", input),
     update: (id: number, input: unknown) => ipcRenderer.invoke("connections:update", id, input),
     delete: (id: number) => ipcRenderer.invoke("connections:delete", id),
-    list: (projectId?: number) => ipcRenderer.invoke("connections:list", projectId),
+    list: (projectId: number) => ipcRenderer.invoke("connections:list", projectId),
     recent: (limit?: number) => ipcRenderer.invoke("connections:recent", limit),
     test: (profileId: number) => ipcRenderer.invoke("connections:test", profileId),
   },

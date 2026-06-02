@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 
 import { SqliteRepository } from "../src/core/db/sqliteRepository.ts";
 
+function waitForTimestampTick() {
+  return new Promise((resolve) => setTimeout(resolve, 5));
+}
+
 test("stores a test run, protocol logs, and measurement records in SQLite", () => {
   const repository = new SqliteRepository(":memory:");
   repository.migrate();
@@ -74,6 +78,47 @@ test("stores and lists Modbus TCP connection profiles", () => {
     assert.equal(profiles[0].projectId, project.id);
     assert.equal(profiles[0].name, "Local mock");
     assert.equal(profiles[0].config.host, "127.0.0.1");
+  } finally {
+    repository.close();
+  }
+});
+
+test("touches the owning project when a connection profile is created, updated, or deleted", async () => {
+  const repository = new SqliteRepository(":memory:");
+  repository.migrate();
+
+  try {
+    const project = repository.createProject({
+      name: "Factory line A",
+      description: "Commissioning bench",
+    });
+    const initialProject = repository.listProjects().find((item) => item.id === project.id);
+
+    await waitForTimestampTick();
+    const profile = repository.saveConnectionProfile({
+      projectId: project.id,
+      name: "Local mock",
+      protocol: "modbus-tcp",
+      config: { host: "127.0.0.1", port: 1502, unitId: 1, timeoutMs: 1000 },
+    });
+    const afterCreate = repository.listProjects().find((item) => item.id === project.id);
+
+    await waitForTimestampTick();
+    repository.updateConnectionProfile(profile.id, {
+      projectId: project.id,
+      name: "Local mock updated",
+      protocol: "modbus-tcp",
+      config: { host: "127.0.0.1", port: 1503, unitId: 1, timeoutMs: 1000 },
+    });
+    const afterUpdate = repository.listProjects().find((item) => item.id === project.id);
+
+    await waitForTimestampTick();
+    repository.deleteConnectionProfile(profile.id);
+    const afterDelete = repository.listProjects().find((item) => item.id === project.id);
+
+    assert.ok(afterCreate.updatedAt > initialProject.updatedAt);
+    assert.ok(afterUpdate.updatedAt > afterCreate.updatedAt);
+    assert.ok(afterDelete.updatedAt > afterUpdate.updatedAt);
   } finally {
     repository.close();
   }

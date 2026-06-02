@@ -44,6 +44,7 @@ export type ConnectionProfileInput = {
  */
 export class SqliteRepository {
   private readonly db: DatabaseSync;
+  private transactionDepth = 0;
 
   constructor(filename: string) {
     this.db = new DatabaseSync(filename);
@@ -192,43 +193,59 @@ export class SqliteRepository {
    */
   saveConnectionProfile(input: ConnectionProfileInput): { id: number } {
     const now = new Date().toISOString();
-    const result = this.db
-      .prepare(
-        `INSERT INTO connection_profiles
-          (project_id, name, protocol, config_json, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .run(input.projectId, input.name, input.protocol, JSON.stringify(input.config), now, now);
+    return this.transaction(() => {
+      const result = this.db
+        .prepare(
+          `INSERT INTO connection_profiles
+            (project_id, name, protocol, config_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(input.projectId, input.name, input.protocol, JSON.stringify(input.config), now, now);
+      this.touchProject(input.projectId);
 
-    return { id: Number(result.lastInsertRowid) };
+      return { id: Number(result.lastInsertRowid) };
+    });
   }
 
   /**
    * Updates an existing protocol connection profile.
    */
   updateConnectionProfile(id: number, input: ConnectionProfileInput): void {
-    const result = this.db
-      .prepare(
-        `UPDATE connection_profiles
-          SET project_id = ?, name = ?, protocol = ?, config_json = ?, updated_at = ?
-          WHERE id = ?`,
-      )
-      .run(input.projectId, input.name, input.protocol, JSON.stringify(input.config), new Date().toISOString(), id);
+    this.transaction(() => {
+      const existing = this.getConnectionProfile(id);
+      const result = this.db
+        .prepare(
+          `UPDATE connection_profiles
+            SET project_id = ?, name = ?, protocol = ?, config_json = ?, updated_at = ?
+            WHERE id = ?`,
+        )
+        .run(input.projectId, input.name, input.protocol, JSON.stringify(input.config), new Date().toISOString(), id);
 
-    if (result.changes === 0) {
-      throw new Error("Connection profile not found");
-    }
+      if (result.changes === 0 || !existing) {
+        throw new Error("Connection profile not found");
+      }
+
+      this.touchProject(existing.projectId);
+      if (existing.projectId !== input.projectId) {
+        this.touchProject(input.projectId);
+      }
+    });
   }
 
   /**
    * Deletes a saved protocol connection profile.
    */
   deleteConnectionProfile(id: number): void {
-    const result = this.db.prepare("DELETE FROM connection_profiles WHERE id = ?").run(id);
+    this.transaction(() => {
+      const existing = this.getConnectionProfile(id);
+      const result = this.db.prepare("DELETE FROM connection_profiles WHERE id = ?").run(id);
 
-    if (result.changes === 0) {
-      throw new Error("Connection profile not found");
-    }
+      if (result.changes === 0 || !existing) {
+        throw new Error("Connection profile not found");
+      }
+
+      this.touchProject(existing.projectId);
+    });
   }
 
   /**
@@ -313,7 +330,17 @@ export class SqliteRepository {
    * either all persist together or all roll back together.
    */
   transaction<T>(fn: () => T): T {
+    if (this.transactionDepth > 0) {
+      this.transactionDepth += 1;
+      try {
+        return fn();
+      } finally {
+        this.transactionDepth -= 1;
+      }
+    }
+
     this.db.exec("BEGIN");
+    this.transactionDepth = 1;
     try {
       const result = fn();
       this.db.exec("COMMIT");
@@ -321,6 +348,8 @@ export class SqliteRepository {
     } catch (error) {
       this.db.exec("ROLLBACK");
       throw error;
+    } finally {
+      this.transactionDepth = 0;
     }
   }
 
@@ -413,5 +442,9 @@ export class SqliteRepository {
     this.db
       .prepare("UPDATE connection_profiles SET project_id = ? WHERE project_id IS NULL")
       .run(Number(result.lastInsertRowid));
+  }
+
+  private touchProject(projectId: number): void {
+    this.db.prepare("UPDATE projects SET updated_at = ? WHERE id = ?").run(new Date().toISOString(), projectId);
   }
 }

@@ -107,6 +107,13 @@ export type ImportProjectSettingsResult = {
   connectionProfileIds: number[];
 };
 
+type ConnectionProfileInputLike = {
+  projectId: number;
+  name: string;
+  protocol: unknown;
+  config: Record<string, unknown>;
+};
+
 /**
  * Application root for the current AIO-ICPT vertical slice.
  *
@@ -179,7 +186,11 @@ export class AioIcptApp {
   /**
    * Lists saved connection profiles for renderer display without exposing SQLite details.
    */
-  listConnectionProfiles(projectId?: number): ConnectionProfile[] {
+  listConnectionProfiles(projectId: number): ConnectionProfile[] {
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      throw new Error("Project is required");
+    }
+
     return this.repository.listConnectionProfiles(projectId);
   }
 
@@ -187,7 +198,8 @@ export class AioIcptApp {
    * Lists recently changed connection profiles across projects.
    */
   listRecentConnectionProfiles(limit = 5): ConnectionProfile[] {
-    return this.repository.listRecentConnectionProfiles(limit);
+    const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 20) : 5;
+    return this.repository.listRecentConnectionProfiles(safeLimit);
   }
 
   /**
@@ -236,11 +248,15 @@ export class AioIcptApp {
         name: project.name,
         description: project.description,
       },
-      connectionProfiles: this.repository.listConnectionProfiles(projectId).map((profile) => ({
-        name: profile.name,
-        protocol: profile.protocol,
-        config: profile.config,
-      })),
+      connectionProfiles: this.repository.listConnectionProfiles(projectId).map((profile) => {
+        const validated = validateConnectionProfile(profile);
+
+        return {
+          name: validated.name,
+          protocol: validated.protocol,
+          config: validated.config,
+        };
+      }),
     };
   }
 
@@ -365,7 +381,9 @@ function normalizeProjectInput(input: ProjectRequest): ProjectRequest {
   };
 }
 
-function validateConnectionProfile(input: SaveConnectionProfileRequest | ConnectionProfile): SaveConnectionProfileRequest {
+function validateConnectionProfile(
+  input: SaveConnectionProfileRequest | ConnectionProfile | ConnectionProfileInputLike,
+): SaveConnectionProfileRequest {
   if (!Number.isInteger(input.projectId) || input.projectId <= 0) {
     throw new Error("Project is required");
   }
@@ -436,6 +454,14 @@ function validateProjectSettingsImport(payload: unknown): ProjectSettingsExport 
     project,
     connectionProfiles,
   };
+}
+
+export function parseProjectSettingsJson(content: string): unknown {
+  try {
+    return JSON.parse(content);
+  } catch {
+    throw new Error("Selected file is not a valid JSON project settings file");
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

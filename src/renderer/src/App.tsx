@@ -86,7 +86,6 @@ type ImportSettingsResult =
 
 type ExportSettingsResult = {
   canceled: boolean;
-  filePath?: string;
 };
 
 declare global {
@@ -104,7 +103,7 @@ declare global {
         save(input: unknown): Promise<{ id: number }>;
         update(id: number, input: unknown): Promise<void>;
         delete(id: number): Promise<void>;
-        list(projectId?: number): Promise<ConnectionProfile[]>;
+        list(projectId: number): Promise<ConnectionProfile[]>;
         recent(limit?: number): Promise<ConnectionProfile[]>;
         test(profileId: number): Promise<ConnectionTestResult>;
       };
@@ -274,7 +273,7 @@ export function App(): React.JSX.Element {
 
     try {
       const exported = await window.aioIcpt.projects.exportSettings(selectedProjectId);
-      setStatus(exported.canceled ? "Project settings export canceled." : `Project settings exported to ${exported.filePath}.`);
+      setStatus(exported.canceled ? "Project settings export canceled." : "Project settings exported.");
     } catch (error) {
       console.error(error);
       setStatus(`Project settings export failed: ${getErrorMessage(error)}`);
@@ -295,7 +294,6 @@ export function App(): React.JSX.Element {
         `Project settings imported as Project #${imported.projectId} with ${imported.connectionProfileIds.length} connection profile(s).`,
       );
       await loadProjects(imported.projectId);
-      await loadProfiles(imported.projectId, imported.connectionProfileIds[0]);
       await loadRecentProfiles();
     } catch (error) {
       console.error(error);
@@ -493,7 +491,10 @@ export function App(): React.JSX.Element {
               ["Device Connections", String(profiles.length)],
             ]}
           />
-          <RecentList title="Recent Projects" items={recentProjects.map((project) => project.name)} />
+          <RecentList
+            title="Recent Projects"
+            items={recentProjects.map((project) => ({ id: project.id, label: project.name }))}
+          />
         </aside>
 
         <section className="panel stackPanel">
@@ -562,7 +563,10 @@ export function App(): React.JSX.Element {
           <p className="inlineStatus">
             {connectionTest ? `${connectionTest.message} ${connectionTest.responseTimeMs}ms` : "No connection test yet."}
           </p>
-          <RecentList title="Recent Device Connections" items={recentProfiles.map((profile) => profile.name)} />
+          <RecentList
+            title="Recent Device Connections"
+            items={recentProfiles.map((profile) => ({ id: profile.id, label: profile.name }))}
+          />
         </section>
 
         <section className="panel runPanel">
@@ -680,7 +684,7 @@ function SummaryBlock({ title, rows }: { title: string; rows: Array<[string, str
   );
 }
 
-function RecentList({ title, items }: { title: string; items: string[] }): React.JSX.Element {
+function RecentList({ title, items }: { title: string; items: Array<{ id: number; label: string }> }): React.JSX.Element {
   return (
     <div className="recentBlock">
       <h3>{title}</h3>
@@ -689,7 +693,7 @@ function RecentList({ title, items }: { title: string; items: string[] }): React
       ) : (
         <ul>
           {items.map((item) => (
-            <li key={item}>{item}</li>
+            <li key={item.id}>{item.label}</li>
           ))}
         </ul>
       )}
