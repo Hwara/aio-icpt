@@ -115,6 +115,8 @@ export function App(): React.JSX.Element {
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId);
   const recentProjects = useMemo(() => projects.slice(0, 3), [projects]);
+  const isCreatingProject = selectedProjectId === undefined;
+  const isCreatingConnection = selectedProfileId === undefined;
 
   useEffect(() => {
     if (!apiAvailable) {
@@ -206,6 +208,7 @@ export function App(): React.JSX.Element {
     setProfiles([]);
     setSelectedProfileId(undefined);
     setConnectionTest(undefined);
+    setStatus("Creating a new project. Save to add it to the project list.");
   }
 
   async function deleteProject(): Promise<void> {
@@ -267,6 +270,7 @@ export function App(): React.JSX.Element {
     setConnectionName("New Modbus TCP profile");
     setConfig(defaultConfig);
     setConnectionTest(undefined);
+    setStatus("Creating a new connection profile. Save to store it under the selected project.");
   }
 
   async function deleteConnection(): Promise<void> {
@@ -308,7 +312,12 @@ export function App(): React.JSX.Element {
       const runLogs = await window.aioIcpt.logs.list(readResult.testRunId);
       setResult(readResult);
       setLogs(runLogs);
-      setStatus(`TestRun #${readResult.testRunId} 저장 완료. 응답 시간 ${readResult.responseTimeMs}ms.`);
+      const source = selectedProfileId
+        ? `saved profile #${selectedProfileId}`
+        : "unsaved connection settings";
+      setStatus(
+        `TestRun #${readResult.testRunId} 저장 완료. 응답 시간 ${readResult.responseTimeMs}ms. Read executed with ${source}.`,
+      );
     } catch (error) {
       console.error(error);
       setResult(undefined);
@@ -330,6 +339,10 @@ export function App(): React.JSX.Element {
       <section className="workspace phaseTwoWorkspace">
         <aside className="panel stackPanel">
           <PanelTitle icon={<Folder size={18} />} title="Projects" />
+          <ModeBadge
+            variant={isCreatingProject ? "draft" : "saved"}
+            label={isCreatingProject ? "Creating new project" : `Editing Project #${selectedProjectId}`}
+          />
           <div className="listBox">
             {projects.length === 0 ? (
               <p className="empty">No projects yet.</p>
@@ -363,7 +376,7 @@ export function App(): React.JSX.Element {
             </button>
             <button onClick={saveProject} disabled={!apiAvailable} title="Save project">
               <Save size={16} />
-              Save
+              {isCreatingProject ? "Create" : "Update"}
             </button>
           </div>
           <button className="danger" onClick={deleteProject} disabled={!apiAvailable || !selectedProjectId} title="Delete project">
@@ -376,6 +389,10 @@ export function App(): React.JSX.Element {
 
         <section className="panel stackPanel">
           <PanelTitle icon={<Cable size={18} />} title="Connection Profiles" />
+          <ModeBadge
+            variant={isCreatingConnection ? "draft" : "saved"}
+            label={isCreatingConnection ? "Creating new connection" : `Editing Profile #${selectedProfileId}`}
+          />
           <div className="listBox">
             {!selectedProjectId ? (
               <p className="empty">Select a project first.</p>
@@ -420,7 +437,7 @@ export function App(): React.JSX.Element {
             </button>
             <button onClick={saveConnection} disabled={!apiAvailable || !selectedProjectId} title="Save connection profile">
               <Save size={16} />
-              Save
+              {isCreatingConnection ? "Create" : "Update"}
             </button>
           </div>
           <div className="buttonRow">
@@ -450,6 +467,10 @@ export function App(): React.JSX.Element {
 
         <section className="panel runPanel">
           <PanelTitle icon={<Play size={18} />} title="Read Holding Registers" />
+          <ModeBadge
+            variant={isCreatingConnection ? "draft" : "saved"}
+            label={isCreatingConnection ? "Draft connection" : `Saved Profile #${selectedProfileId}`}
+          />
           <div className="fieldGrid">
             <NumberField label="Start Address" value={startAddress} onChange={setStartAddress} />
             <NumberField label="Quantity" value={quantity} onChange={setQuantity} />
@@ -504,6 +525,10 @@ function PanelTitle({ icon, title }: { icon: React.ReactNode; title: string }): 
       <h2>{title}</h2>
     </div>
   );
+}
+
+function ModeBadge({ label, variant }: { label: string; variant: "draft" | "saved" }): React.JSX.Element {
+  return <span className={`modeBadge ${variant}`}>{label}</span>;
 }
 
 function NumberField({

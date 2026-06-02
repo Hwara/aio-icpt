@@ -110,6 +110,7 @@ export class AioIcptApp {
   constructor(dataDirectory: string) {
     this.repository = new SqliteRepository(join(dataDirectory, "aio-icpt.sqlite"));
     this.repository.migrate();
+    this.repository.ensureDefaultProject();
   }
 
   /**

@@ -126,6 +126,24 @@ export class SqliteRepository {
   }
 
   /**
+   * Ensures the app has a startup workspace for project-owned assets.
+   */
+  ensureDefaultProject(): { id: number } {
+    const project: any = this.db
+      .prepare("SELECT id FROM projects ORDER BY updated_at DESC, id DESC LIMIT 1")
+      .get();
+
+    if (project) {
+      return { id: project.id };
+    }
+
+    return this.createProject({
+      name: "Default project",
+      description: "Automatically created startup workspace.",
+    });
+  }
+
+  /**
    * Lists projects with the most recently changed project first.
    */
   listProjects(): any[] {

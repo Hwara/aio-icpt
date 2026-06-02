@@ -35,14 +35,28 @@ test("manages projects through the Core facade", async () => {
     });
 
     const projects = app.listProjects();
+    const updated = projects.find((item) => item.id === project.id);
 
-    assert.equal(projects.length, 1);
-    assert.equal(projects[0].name, "Factory line A - updated");
-    assert.equal(projects[0].description, "Updated description");
+    assert.equal(projects.length, 2);
+    assert.equal(updated.name, "Factory line A - updated");
+    assert.equal(updated.description, "Updated description");
 
     app.deleteProject(project.id);
 
-    assert.equal(app.listProjects().length, 0);
+    assert.equal(app.listProjects().length, 1);
+  } finally {
+    await close();
+  }
+});
+
+test("creates a default project on app startup", async () => {
+  const { app, close } = createTempApp();
+
+  try {
+    const projects = app.listProjects();
+
+    assert.equal(projects.length, 1);
+    assert.equal(projects[0].name, "Default project");
   } finally {
     await close();
   }

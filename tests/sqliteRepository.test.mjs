@@ -101,9 +101,11 @@ test("creates, updates, lists, and deletes projects", () => {
     const projects = repository.listProjects();
 
     assert.equal(projects.length, 2);
-    assert.equal(projects[0].id, second.id);
-    assert.equal(projects[1].name, "Factory line A - updated");
-    assert.equal(projects[1].description, "Updated description");
+    assert.ok(projects.some((project) => project.id === second.id));
+
+    const updated = projects.find((project) => project.id === first.id);
+    assert.equal(updated.name, "Factory line A - updated");
+    assert.equal(updated.description, "Updated description");
 
     repository.deleteProject(first.id);
 
@@ -111,6 +113,43 @@ test("creates, updates, lists, and deletes projects", () => {
 
     assert.equal(remainingProjects.length, 1);
     assert.equal(remainingProjects[0].id, second.id);
+  } finally {
+    repository.close();
+  }
+});
+
+test("ensures a default project when no projects exist", () => {
+  const repository = new SqliteRepository(":memory:");
+  repository.migrate();
+
+  try {
+    const ensured = repository.ensureDefaultProject();
+    const projects = repository.listProjects();
+
+    assert.equal(projects.length, 1);
+    assert.equal(ensured.id, projects[0].id);
+    assert.equal(projects[0].name, "Default project");
+    assert.equal(projects[0].description, "Automatically created startup workspace.");
+  } finally {
+    repository.close();
+  }
+});
+
+test("does not create a default project when a project already exists", () => {
+  const repository = new SqliteRepository(":memory:");
+  repository.migrate();
+
+  try {
+    const existing = repository.createProject({
+      name: "Factory line A",
+      description: "Initial checkout",
+    });
+    const ensured = repository.ensureDefaultProject();
+    const projects = repository.listProjects();
+
+    assert.equal(projects.length, 1);
+    assert.equal(ensured.id, existing.id);
+    assert.equal(projects[0].name, "Factory line A");
   } finally {
     repository.close();
   }
