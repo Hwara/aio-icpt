@@ -64,6 +64,7 @@ PostgreSQL 같은 외부 인프라는 선택 기능이어야 하며, 기본 사�
 
 - 프로젝트 생성, 조회, 수정, 삭제.
 - 프로젝트별 connection profile 관리.
+- 프로젝트 설정 Import/Export.
 - 프로젝트별 test scenario 관리.
 - 프로젝트별 register map 관리.
 - 프로젝트별 test run/history 조회.
@@ -72,6 +73,7 @@ PostgreSQL 같은 외부 인프라는 선택 기능이어야 하며, 기본 사�
 
 - 사용자는 장비 또는 현장 단위로 테스트 자산을 분리할 수 있다.
 - 프로젝트를 다시 열었을 때 이전 연결 설정, 시나리오, 결과를 이어서 볼 수 있다.
+- 프로젝트 설정 Import/Export는 테스트 이력과 로그가 아니라 프로젝트 기본 정보와 연결 설정 이동을 목적으로 한다.
 
 ### 3.2 연결 설정 관리
 
@@ -82,6 +84,7 @@ PostgreSQL 같은 외부 인프라는 선택 기능이어야 하며, 기본 사�
 - Modbus TCP 연결 설정.
 - Modbus RTU 연결 설정.
 - 향후 MQTT, OPC UA, EtherNet/IP 연결 설정.
+- 여러 산업 기기를 하나의 프로젝트 안에 등록하기 위한 장비 연결 목록.
 - 연결 테스트.
 - 연결 상태 표시.
 - 프로토콜별 설정 검증.
@@ -90,6 +93,8 @@ PostgreSQL 같은 외부 인프라는 선택 기능이어야 하며, 기본 사�
 
 - Renderer는 입력만 담당하고, 실제 검증은 Core에서 수행한다.
 - 프로토콜별 설정 차이는 JSON 확장 필드로 수용하되, 공통 식별자와 관계는 고정한다.
+- Phase 2에서는 별도 `Device` 테이블 없이 `connection_profiles`를 장비 연결 목록처럼 사용한다.
+- 장기적으로 `Device`는 실제 산업 장비 한 대를 표현하고, connection profile은 그 장비에 접속하기 위한 설정으로 분리할 수 있다.
 
 ### 3.3 프로토콜 테스트 작업 공간
 
@@ -218,6 +223,8 @@ RAW
 ### 3.9 Export와 Report
 
 사용자는 저장된 테스트 결과와 로그를 외부 파일로 내보낼 수 있어야 한다.
+
+이 섹션의 Export는 테스트 실행 결과와 로그에 대한 Export이다. Phase 2의 프로젝트 설정 Import/Export는 프로젝트와 연결 설정 이동을 위한 별도 기능이며, TestRun, ProtocolLog, MeasurementRecord를 포함하지 않는다.
 
 포함 기능:
 
@@ -389,14 +396,20 @@ MVP 제외 또는 선택 기능:
 - Connection test action.
 - Profile validation.
 - 최근 프로젝트/최근 연결 표시.
+- 프로젝트 설정 Import/Export v1.
+- 선택 중심 UI와 Create/Edit modal.
 
 현재 구현 기준:
 
 - Project CRUD가 SQLite, Core, IPC, Renderer 흐름으로 연결되어 있다.
 - Connection Profile은 Project에 연결되어 저장, 조회, 수정, 삭제된다.
+- Phase 2 UI에서 Connection Profile은 장비 연결 목록으로 표현한다.
 - Phase 2 validation은 Modbus TCP profile을 대상으로 Core에서 수행된다.
 - 저장된 profile로 Modbus TCP connection test를 실행할 수 있다.
 - 최근 프로젝트와 최근 연결은 `updated_at` 기준 목록으로 표시한다.
+- 프로젝트 설정 Export는 `schemaVersion`, `exportedAt`, project name/description, connection profiles name/protocol/config만 JSON으로 저장한다.
+- 프로젝트 설정 Import는 항상 새 프로젝트로 가져오며 기존 프로젝트와 connection profile을 덮어쓰지 않는다.
+- Phase 2에서는 별도 `devices` 테이블과 multi-device sequential request 실행을 구현하지 않는다.
 
 ### Phase 3 - Modbus MVP 기능 확장
 
@@ -409,6 +422,7 @@ MVP 제외 또는 선택 기능:
 - data type 변환.
 - 성공/실패 카운트.
 - 반복 polling.
+- 여러 장비 연결을 대상으로 한 순차 요청 실행의 기본 실행 모델 검토.
 
 ### Phase 4 - 로그, 히스토리, 필터링
 
@@ -431,6 +445,7 @@ MVP 제외 또는 선택 기능:
 - TestScenario 저장/조회.
 - Scenario Runner.
 - Polling.
+- 여러 장비에 순차적으로 요청을 보내는 multi-device scenario 실행.
 - expected value 검증.
 - response time 검증.
 - retry.

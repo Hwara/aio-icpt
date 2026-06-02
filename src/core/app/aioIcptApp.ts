@@ -95,6 +95,18 @@ export type ConnectionTestResult = {
   message: string;
 };
 
+export type ProjectSettingsExport = {
+  schemaVersion: 1;
+  exportedAt: string;
+  project: ProjectRequest;
+  connectionProfiles: Array<Omit<SaveConnectionProfileRequest, "projectId">>;
+};
+
+export type ImportProjectSettingsResult = {
+  projectId: number;
+  connectionProfileIds: number[];
+};
+
 /**
  * Application root for the current AIO-ICPT vertical slice.
  *
@@ -203,6 +215,59 @@ export class AioIcptApp {
     } finally {
       await session.disconnect();
     }
+  }
+
+  /**
+   * Builds a portable settings snapshot for one project.
+   *
+   * Runtime identifiers and test history are intentionally excluded so the
+   * payload can be imported as a fresh project on another workstation.
+   */
+  exportProjectSettings(projectId: number): ProjectSettingsExport {
+    const project = this.repository.listProjects().find((item) => item.id === projectId);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    return {
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      project: {
+        name: project.name,
+        description: project.description,
+      },
+      connectionProfiles: this.repository.listConnectionProfiles(projectId).map((profile) => ({
+        name: profile.name,
+        protocol: profile.protocol,
+        config: profile.config,
+      })),
+    };
+  }
+
+  /**
+   * Imports portable project settings as a new project.
+   *
+   * Existing projects and profiles are never overwritten; imported profiles are
+   * re-owned by the newly created project.
+   */
+  importProjectSettings(payload: unknown): ImportProjectSettingsResult {
+    const imported = validateProjectSettingsImport(payload);
+
+    return this.repository.transaction(() => {
+      const project = this.createProject(imported.project);
+      const connectionProfileIds = imported.connectionProfiles.map((profile) => {
+        const saved = this.saveConnectionProfile({
+          projectId: project.id,
+          ...profile,
+        });
+        return saved.id;
+      });
+
+      return {
+        projectId: project.id,
+        connectionProfileIds,
+      };
+    });
   }
 
   /**
@@ -322,6 +387,59 @@ function validateConnectionProfile(input: SaveConnectionProfileRequest | Connect
     protocol: "modbus-tcp",
     config,
   };
+}
+
+function validateProjectSettingsImport(payload: unknown): ProjectSettingsExport {
+  if (!isRecord(payload)) {
+    throw new Error("Project settings import payload must be an object");
+  }
+
+  if (payload.schemaVersion !== 1) {
+    throw new Error("Unsupported project settings schemaVersion");
+  }
+
+  if (!isRecord(payload.project)) {
+    throw new Error("Project settings project must be an object");
+  }
+
+  const project = normalizeProjectInput({
+    name: typeof payload.project.name === "string" ? payload.project.name : "",
+    description: typeof payload.project.description === "string" ? payload.project.description : "",
+  });
+
+  if (!Array.isArray(payload.connectionProfiles)) {
+    throw new Error("Project settings connectionProfiles must be an array");
+  }
+
+  const connectionProfiles = payload.connectionProfiles.map((profile) => {
+    if (!isRecord(profile)) {
+      throw new Error("Project settings connection profile must be an object");
+    }
+
+    const validated = validateConnectionProfile({
+      projectId: 1,
+      name: typeof profile.name === "string" ? profile.name : "",
+      protocol: profile.protocol,
+      config: isRecord(profile.config) ? profile.config : {},
+    });
+
+    return {
+      name: validated.name,
+      protocol: validated.protocol,
+      config: validated.config,
+    };
+  });
+
+  return {
+    schemaVersion: 1,
+    exportedAt: typeof payload.exportedAt === "string" ? payload.exportedAt : new Date().toISOString(),
+    project,
+    connectionProfiles,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeModbusTcpConfig(config: Record<string, unknown>): ModbusTcpConnectionConfig {

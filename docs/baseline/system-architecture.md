@@ -236,6 +236,8 @@ window.aioIcpt.projects.create(input)
 window.aioIcpt.projects.list()
 window.aioIcpt.projects.update(id, input)
 window.aioIcpt.projects.delete(id)
+window.aioIcpt.projects.exportSettings(projectId)
+window.aioIcpt.projects.importSettings()
 window.aioIcpt.connections.save(input)
 window.aioIcpt.connections.update(id, input)
 window.aioIcpt.connections.delete(id)
@@ -266,6 +268,24 @@ React App
 -> SqliteRepository projects / connection_profiles
 -> result returned to Renderer
 ```
+
+Phase 2 프로젝트 설정 Import/Export 흐름:
+
+```text
+React App
+-> window.aioIcpt.projects.exportSettings(projectId) 또는 importSettings()
+-> Preload
+-> ipcRenderer.invoke("projects:exportSettings" 또는 "projects:importSettings")
+-> Main Electron dialog로 파일 저장/선택
+-> AioIcptApp export/import use case
+-> SqliteRepository projects / connection_profiles
+-> Main에서 JSON 파일 쓰기 또는 읽기
+-> result returned to Renderer
+```
+
+Renderer는 파일 시스템에 직접 접근하지 않는다. Export payload는 project id, connection profile id, TestRun, ProtocolLog, MeasurementRecord를 포함하지 않으며, Import는 항상 새 project를 생성한다.
+
+Phase 2 UI에서 connection profile은 장비 연결 목록으로 표현한다. 장기적으로 별도 `Device` 개념이 도입되면 Project 아래에 Device를 두고, Device가 하나 이상의 connection profile, register map, scenario target과 연결될 수 있다. Phase 2에서는 schema를 변경하지 않고 기존 `connection_profiles`를 사용한다.
 
 Connection test 흐름:
 

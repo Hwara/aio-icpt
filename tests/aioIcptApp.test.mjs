@@ -167,3 +167,116 @@ test("rejects connection tests for missing profiles", async () => {
     await close();
   }
 });
+
+test("exports project settings without database identifiers or run history", async () => {
+  const { app, close } = createTempApp();
+
+  try {
+    const project = app.createProject({ name: "Factory line A", description: "Commissioning bench" });
+    app.saveConnectionProfile({
+      projectId: project.id,
+      name: "PLC 1",
+      protocol: "modbus-tcp",
+      config: { host: "192.168.0.10", port: 502, unitId: 1, timeoutMs: 1000 },
+    });
+    app.saveConnectionProfile({
+      projectId: project.id,
+      name: "PLC 2",
+      protocol: "modbus-tcp",
+      config: { host: "192.168.0.11", port: 502, unitId: 2, timeoutMs: 1500 },
+    });
+
+    const exported = app.exportProjectSettings(project.id);
+
+    assert.equal(exported.schemaVersion, 1);
+    assert.equal(exported.project.name, "Factory line A");
+    assert.equal(exported.project.description, "Commissioning bench");
+    assert.equal(exported.connectionProfiles.length, 2);
+    assert.equal(exported.connectionProfiles[0].name, "PLC 2");
+    assert.equal(exported.connectionProfiles[0].protocol, "modbus-tcp");
+    assert.equal(exported.connectionProfiles[0].config.host, "192.168.0.11");
+    assert.equal(typeof exported.exportedAt, "string");
+    assert.equal("id" in exported.project, false);
+    assert.equal("projectId" in exported.connectionProfiles[0], false);
+    assert.equal("testRuns" in exported, false);
+  } finally {
+    await close();
+  }
+});
+
+test("imports project settings as a new project without overwriting existing data", async () => {
+  const { app, close } = createTempApp();
+
+  try {
+    const existingProject = app.createProject({ name: "Factory line A", description: "Existing" });
+    app.saveConnectionProfile({
+      projectId: existingProject.id,
+      name: "Existing PLC",
+      protocol: "modbus-tcp",
+      config: { host: "192.168.0.20", port: 502, unitId: 1, timeoutMs: 1000 },
+    });
+
+    const imported = app.importProjectSettings({
+      schemaVersion: 1,
+      exportedAt: "2026-06-02T00:00:00.000Z",
+      project: { name: "Factory line A", description: "Imported" },
+      connectionProfiles: [
+        {
+          name: "Imported PLC",
+          protocol: "modbus-tcp",
+          config: { host: "192.168.0.30", port: 502, unitId: 3, timeoutMs: 1200 },
+        },
+      ],
+    });
+
+    const projects = app.listProjects();
+    const existingProfiles = app.listConnectionProfiles(existingProject.id);
+    const importedProfiles = app.listConnectionProfiles(imported.projectId);
+
+    assert.notEqual(imported.projectId, existingProject.id);
+    assert.equal(projects.filter((project) => project.name === "Factory line A").length, 2);
+    assert.equal(existingProfiles.length, 1);
+    assert.equal(existingProfiles[0].name, "Existing PLC");
+    assert.equal(importedProfiles.length, 1);
+    assert.equal(importedProfiles[0].name, "Imported PLC");
+    assert.equal(importedProfiles[0].projectId, imported.projectId);
+  } finally {
+    await close();
+  }
+});
+
+test("rejects imported project settings with unsupported schema or invalid profile config", async () => {
+  const { app, close } = createTempApp();
+
+  try {
+    assert.throws(
+      () =>
+        app.importProjectSettings({
+          schemaVersion: 2,
+          exportedAt: "2026-06-02T00:00:00.000Z",
+          project: { name: "Factory line A", description: "" },
+          connectionProfiles: [],
+        }),
+      /Unsupported project settings schemaVersion/,
+    );
+
+    assert.throws(
+      () =>
+        app.importProjectSettings({
+          schemaVersion: 1,
+          exportedAt: "2026-06-02T00:00:00.000Z",
+          project: { name: "Factory line A", description: "" },
+          connectionProfiles: [
+            {
+              name: "Bad PLC",
+              protocol: "modbus-tcp",
+              config: { host: "192.168.0.30", port: 70000, unitId: 3, timeoutMs: 1200 },
+            },
+          ],
+        }),
+      /port must be an integer from 1 to 65535/,
+    );
+  } finally {
+    await close();
+  }
+});

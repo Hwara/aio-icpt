@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { AioIcptApp } from "../core/app/aioIcptApp.ts";
@@ -43,6 +44,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle("projects:list", () => getApp().listProjects());
   ipcMain.handle("projects:update", (_event, id: number, input) => getApp().updateProject(id, input));
   ipcMain.handle("projects:delete", (_event, id: number) => getApp().deleteProject(id));
+  ipcMain.handle("projects:exportSettings", (_event, projectId: number) => exportProjectSettings(projectId));
+  ipcMain.handle("projects:importSettings", () => importProjectSettings());
   ipcMain.handle("connections:save", (_event, input) => getApp().saveConnectionProfile(input));
   ipcMain.handle("connections:update", (_event, id: number, input) => getApp().updateConnectionProfile(id, input));
   ipcMain.handle("connections:delete", (_event, id: number) => getApp().deleteConnectionProfile(id));
@@ -54,6 +57,52 @@ function registerIpcHandlers(): void {
   ipcMain.handle("runs:list", () => getApp().listTestRuns());
   ipcMain.handle("logs:list", (_event, testRunId?: number) => getApp().listProtocolLogs(testRunId));
   ipcMain.handle("measurements:list", (_event, testRunId?: number) => getApp().listMeasurementRecords(testRunId));
+}
+
+/**
+ * Lets the user choose where to write a portable project settings JSON file.
+ */
+async function exportProjectSettings(projectId: number): Promise<{ canceled: boolean; filePath?: string }> {
+  const settings = getApp().exportProjectSettings(projectId);
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: "Export Project Settings",
+    defaultPath: `${toSafeFilename(settings.project.name)}.aio-icpt-project.json`,
+    filters: [{ name: "AIO-ICPT Project Settings", extensions: ["json"] }],
+  });
+
+  if (result.canceled || !result.filePath) {
+    return { canceled: true };
+  }
+
+  await writeFile(result.filePath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  return { canceled: false, filePath: result.filePath };
+}
+
+/**
+ * Lets the user choose a portable project settings JSON file and imports it as
+ * a new project through the Core layer.
+ */
+async function importProjectSettings(): Promise<
+  { canceled: true } | { canceled: false; projectId: number; connectionProfileIds: number[] }
+> {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Import Project Settings",
+    properties: ["openFile"],
+    filters: [{ name: "AIO-ICPT Project Settings", extensions: ["json"] }],
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { canceled: true };
+  }
+
+  const content = await readFile(result.filePaths[0], "utf8");
+  const imported = getApp().importProjectSettings(JSON.parse(content));
+  return { canceled: false, ...imported };
+}
+
+function toSafeFilename(value: string): string {
+  const safe = value.trim().replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-");
+  return safe || "project-settings";
 }
 
 /**

@@ -12,6 +12,8 @@ const api = {
     list: () => ipcRenderer.invoke("projects:list"),
     update: (id: number, input: unknown) => ipcRenderer.invoke("projects:update", id, input),
     delete: (id: number) => ipcRenderer.invoke("projects:delete", id),
+    exportSettings: (projectId: number) => ipcRenderer.invoke("projects:exportSettings", projectId),
+    importSettings: () => ipcRenderer.invoke("projects:importSettings"),
   },
   connections: {
     save: (input: unknown) => ipcRenderer.invoke("connections:save", input),
