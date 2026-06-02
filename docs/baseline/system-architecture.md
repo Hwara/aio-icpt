@@ -232,8 +232,18 @@ React App
 현재 `window.aioIcpt` API:
 
 ```ts
+window.aioIcpt.projects.create(input)
+window.aioIcpt.projects.list()
+window.aioIcpt.projects.update(id, input)
+window.aioIcpt.projects.delete(id)
+window.aioIcpt.projects.exportSettings(projectId)
+window.aioIcpt.projects.importSettings()
 window.aioIcpt.connections.save(input)
-window.aioIcpt.connections.list()
+window.aioIcpt.connections.update(id, input)
+window.aioIcpt.connections.delete(id)
+window.aioIcpt.connections.list(projectId?)
+window.aioIcpt.connections.recent(limit?)
+window.aioIcpt.connections.test(profileId)
 window.aioIcpt.mock.start()
 window.aioIcpt.modbus.readHoldingRegisters(input)
 window.aioIcpt.runs.list()
@@ -246,6 +256,51 @@ window.aioIcpt.measurements.list(testRunId?)
 - 전체 아키텍처의 첫 검증 사례이다.
 - MVP 전체가 아니다.
 - 향후 공통 ProtocolPlugin interface를 추출하기 전의 구체 구현이다.
+
+Phase 2에서 추가된 프로젝트/연결 관리 흐름:
+
+```text
+React App
+-> window.aioIcpt.projects.* / window.aioIcpt.connections.*
+-> ipcRenderer.invoke("projects:*" 또는 "connections:*", input)
+-> ipcMain.handle(...)
+-> AioIcptApp Project/Profile use case
+-> SqliteRepository projects / connection_profiles
+-> result returned to Renderer
+```
+
+Phase 2 프로젝트 설정 Import/Export 흐름:
+
+```text
+React App
+-> window.aioIcpt.projects.exportSettings(projectId) 또는 importSettings()
+-> Preload
+-> ipcRenderer.invoke("projects:exportSettings" 또는 "projects:importSettings")
+-> Main Electron dialog로 파일 저장/선택
+-> AioIcptApp export/import use case
+-> SqliteRepository projects / connection_profiles
+-> Main에서 JSON 파일 쓰기 또는 읽기
+-> result returned to Renderer
+```
+
+Renderer는 파일 시스템에 직접 접근하지 않는다. Export payload는 project id, connection profile id, TestRun, ProtocolLog, MeasurementRecord를 포함하지 않으며, Import는 항상 새 project를 생성한다.
+
+Phase 2 UI에서 connection profile은 장비 연결 목록으로 표현한다. 장기적으로 별도 `Device` 개념이 도입되면 Project 아래에 Device를 두고, Device가 하나 이상의 connection profile, register map, scenario target과 연결될 수 있다. Phase 2에서는 schema를 변경하지 않고 기존 `connection_profiles`를 사용한다.
+
+Connection test 흐름:
+
+```text
+React App
+-> window.aioIcpt.connections.test(profileId)
+-> AioIcptApp.testConnectionProfile(profileId)
+-> SqliteRepository.getConnectionProfile(profileId)
+-> Core validation
+-> ModbusTcpSession.connect()
+-> ModbusTcpSession.disconnect()
+-> result returned to Renderer
+```
+
+Connection test는 endpoint 도달 가능성 확인만 수행하며 TestRun, ProtocolLog, MeasurementRecord를 생성하지 않는다.
 
 ## 6. 프로토콜 확장 구조
 

@@ -154,6 +154,7 @@ Electron 보안 기준:
 
 - `nodeIntegration`은 비활성화한다.
 - `contextIsolation`은 활성화한다.
+- Renderer sandbox는 보안상 활성화가 목표이나, 현재 ESM preload 호환성 때문에 Phase 2에서는 `sandbox: false`를 유지한다. 근거와 후속 조치는 `docs/adr/0008-keep-renderer-sandbox-disabled-until-preload-is-sandbox-compatible.md`를 따른다.
 - Renderer에는 최소한의 `window.aioIcpt` API만 노출한다.
 - Renderer에서 파일 시스템, DB, TCP, Serial Port에 직접 접근하지 않는다.
 - 파일 경로, Export, Import는 Main/Core를 통해 처리한다.

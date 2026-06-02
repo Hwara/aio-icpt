@@ -14,7 +14,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -42,6 +43,7 @@ input {
 
 h1,
 h2,
+h3,
 p {
   margin: 0;
 }
@@ -65,12 +67,22 @@ h1 {
   align-items: stretch;
 }
 
+.phaseTwoWorkspace {
+  grid-template-columns: minmax(260px, 320px) minmax(320px, 360px) minmax(430px, 1fr);
+}
+
 .panel {
   min-height: 620px;
   padding: 16px;
   border: 1px solid #d9e0e7;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.stackPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .panelTitle {
@@ -85,6 +97,27 @@ h1 {
   font-size: 16px;
 }
 
+.modeBadge {
+  width: fit-content;
+  border: 1px solid #cdd6df;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.modeBadge.draft {
+  color: #6a4c14;
+  background: #fff6d8;
+  border-color: #e5c76f;
+}
+
+.modeBadge.saved {
+  color: #365246;
+  background: #e5f2ec;
+  border-color: #b7d9c8;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -94,7 +127,8 @@ label {
   font-weight: 650;
 }
 
-input {
+input,
+textarea {
   width: 100%;
   min-height: 36px;
   border: 1px solid #cdd6df;
@@ -102,6 +136,11 @@ input {
   padding: 7px 9px;
   color: #17202a;
   background: #fbfcfd;
+}
+
+textarea {
+  min-height: 78px;
+  resize: vertical;
 }
 
 .fieldGrid {
@@ -142,6 +181,121 @@ button:disabled {
   background: #2f6f5e;
 }
 
+.inlinePrimary {
+  margin: 0;
+}
+
+.danger {
+  width: 100%;
+  border-color: #c97b73;
+  color: #7d2f29;
+  background: #fff7f6;
+}
+
+.listBox {
+  display: grid;
+  max-height: 156px;
+  gap: 8px;
+  overflow: auto;
+}
+
+.tallList {
+  max-height: 250px;
+}
+
+.listItem {
+  width: 100%;
+  min-height: 48px;
+  justify-content: space-between;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.listItem span,
+.listItem small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listItem span {
+  font-weight: 750;
+}
+
+.listItem small {
+  max-width: 45%;
+  color: #687887;
+  font-size: 12px;
+}
+
+.listItem.selected {
+  border-color: #2f6f5e;
+  background: #edf7f2;
+}
+
+.inlineStatus {
+  min-height: 22px;
+  color: #52606d;
+  font-size: 13px;
+}
+
+.summaryBlock {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #dce4ea;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fafb;
+}
+
+.summaryBlock h3 {
+  margin-bottom: 2px;
+  color: #334554;
+  font-size: 13px;
+}
+
+.summaryRow {
+  display: grid;
+  grid-template-columns: minmax(88px, 0.6fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  font-size: 13px;
+}
+
+.summaryRow span {
+  color: #697987;
+  font-weight: 700;
+}
+
+.summaryRow strong {
+  min-width: 0;
+  color: #253544;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.recentBlock {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+  border-top: 1px solid #e2e8ee;
+  padding-top: 12px;
+}
+
+.recentBlock h3 {
+  color: #334554;
+  font-size: 13px;
+}
+
+.recentBlock ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: #52606d;
+  font-size: 13px;
+}
+
 .resultGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -176,7 +330,7 @@ button:disabled {
 
 .logList {
   display: grid;
-  max-height: 560px;
+  max-height: 300px;
   gap: 10px;
   overflow: auto;
 }
@@ -219,6 +373,45 @@ code {
   overflow-wrap: anywhere;
   color: #1f2d3a;
   font-size: 12px;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgb(23 32 42 / 45%);
+  z-index: 10;
+}
+
+.modalPanel {
+  width: min(520px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  border: 1px solid #cdd6df;
+  border-radius: 8px;
+  padding: 16px;
+  background: #ffffff;
+  box-shadow: 0 18px 45px rgb(23 32 42 / 22%);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.modalHeader h2 {
+  font-size: 18px;
+}
+
+.iconButton {
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
 }
 
 @media (max-width: 1100px) {

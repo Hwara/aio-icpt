@@ -25,6 +25,8 @@ AIO-ICPT의 데이터 모델 전략은 **Core ERD 고정 + JSON 확장**이다.
 ```mermaid
 erDiagram
   PROJECTS ||--o{ CONNECTION_PROFILES : owns
+  PROJECTS ||--o{ DEVICES : contains_future
+  DEVICES ||--o{ CONNECTION_PROFILES : may_use_future
   PROJECTS ||--o{ TEST_SCENARIOS : owns
   PROJECTS ||--o{ REGISTER_MAPS : owns
   CONNECTION_PROFILES ||--o{ TEST_RUNS : used_by
@@ -63,6 +65,34 @@ erDiagram
 - `updated_at`
 
 `config_json`은 Modbus TCP, Modbus RTU, MQTT, OPC UA처럼 프로토콜마다 다른 설정을 저장한다.
+
+Phase 2에서는 `connection_profiles`가 UI에서 장비 연결 목록처럼 표시된다. 아직 별도 `devices` 테이블은 만들지 않는다.
+
+### 향후 Device 개념
+
+목적: 실제 산업 장비 한 대를 프로젝트 안에서 명시적으로 표현한다.
+
+후보 필드:
+
+- `id`
+- `project_id`
+- `name`
+- `description`
+- `location`
+- `metadata_json`
+- `created_at`
+- `updated_at`
+
+도입 시점:
+
+- 여러 장비를 대상으로 순차 요청, polling, scenario 실행을 구현할 때.
+- 하나의 장비에 여러 connection profile 또는 register map을 연결해야 할 때.
+- 장비별 실행 이력과 상태를 조회해야 할 때.
+
+Phase 2 제한:
+
+- `Device`는 문서화된 장기 개념이며 현재 SQLite schema에는 추가하지 않는다.
+- 프로젝트 설정 Import/Export v1은 project와 connection profile만 이동한다.
 
 ### 2.3 test_scenarios
 
@@ -200,6 +230,8 @@ scale factor를 도입하면 raw value와 scaled value를 분리할지 별도 AD
 
 목적: export 실행 이력 저장.
 
+이 테이블은 TestRun 기준 CSV/JSON 결과 Export 이력 저장을 위한 최종 모델이다. Phase 2 프로젝트 설정 Export는 파일 이동 기능이며 이 테이블에 기록하지 않는다.
+
 주요 필드:
 
 - `id`
@@ -216,8 +248,17 @@ scale factor를 도입하면 raw value와 scaled value를 분리할지 별도 AD
 
 ```mermaid
 erDiagram
+  PROJECTS {
+    integer id PK
+    text name
+    text description
+    text created_at
+    text updated_at
+  }
+
   CONNECTION_PROFILES {
     integer id PK
+    integer project_id FK
     text name
     text protocol
     text config_json
@@ -255,21 +296,41 @@ erDiagram
     text timestamp
   }
 
+  PROJECTS ||--o{ CONNECTION_PROFILES : owns
   TEST_RUNS ||--o{ PROTOCOL_LOGS : has
   TEST_RUNS ||--o{ MEASUREMENT_RECORDS : has
 ```
 
-현재 테이블은 최종 ERD의 축소판이다. `project_id`, `connection_profile_id`, `scenario_id`, `metadata_json` 같은 필드는 아직 구현되지 않았다.
+현재 테이블은 최종 ERD의 축소판이다. `projects`와 `connection_profiles.project_id`는 Phase 2에서 추가되었다. `test_runs.connection_profile_id`, `scenario_id`, `metadata_json` 같은 필드는 아직 구현되지 않았다.
+`devices` 테이블은 multi-device 순차 실행 요구가 구체화되는 이후 Phase에서 추가한다.
 
 ## 4. 현재 테이블 정의
 
-### 4.1 connection_profiles
+### 4.1 projects
+
+목적: 테스트 작업의 최상위 단위.
+
+현재 필드:
+
+- `id`: primary key.
+- `name`: 사용자 표시 이름.
+- `description`: 프로젝트 설명.
+- `created_at`: 생성 시각.
+- `updated_at`: 수정 시각.
+
+현재 제한:
+
+- 아직 프로젝트별 test run/history 관계는 연결되지 않았다.
+- 최근 프로젝트 표시는 별도 settings 저장 없이 `updated_at` 정렬을 사용한다.
+
+### 4.2 connection_profiles
 
 목적: 재사용 가능한 프로토콜 연결 설정 저장.
 
 현재 필드:
 
 - `id`: primary key.
+- `project_id`: 소유 프로젝트.
 - `name`: 사용자 표시 이름.
 - `protocol`: 프로토콜 id. 현재 `modbus-tcp`.
 - `config_json`: 프로토콜별 연결 설정.
@@ -287,7 +348,12 @@ erDiagram
 }
 ```
 
-### 4.2 test_runs
+현재 제한:
+
+- Phase 2 UI에서는 장비 연결 목록으로 표시되지만 실제 장비 엔티티는 아니다.
+- 여러 장비 순차 실행에서 필요한 장비별 상태, 위치, register map 연결은 아직 저장하지 않는다.
+
+### 4.3 test_runs
 
 목적: 프로토콜 테스트 실행 1회를 저장.
 
@@ -302,10 +368,10 @@ erDiagram
 
 현재 제한:
 
-- 아직 project/profile/scenario 관계가 없다.
+- connection profile은 project에 연결되지만 test run은 아직 profile id를 저장하지 않는다.
 - 단일 read operation 기준의 단순 run 정보만 저장한다.
 
-### 4.3 protocol_logs
+### 4.4 protocol_logs
 
 목적: structured log와 raw frame 저장.
 
@@ -324,7 +390,7 @@ erDiagram
 
 - function code, address, transaction id는 아직 `metadata_json`으로 분리되지 않았다.
 
-### 4.4 measurement_records
+### 4.5 measurement_records
 
 목적: 프로토콜 작업 결과로 얻은 decoded value 저장.
 
@@ -342,20 +408,20 @@ erDiagram
 
 - `unit`, `raw_value`, `metadata_json`은 아직 없다.
 
-## 5. 향후 추가 테이블
+## 5. 향후 추가/확장 테이블
 
-우선순위가 높은 추가 테이블:
+`projects`는 이미 현재 schema에 포함되어 있다. 아래 목록은 아직 구현되지 않았거나 이후 Phase에서 확장될 테이블이다.
 
-- `projects`
+- `devices`
 - `test_scenarios`
 - `register_maps`
 - `register_map_items`
 - `user_settings`
 - `exports`
 
-추가 시점:
+추가 또는 확장 시점:
 
-- `projects`: Phase 2.
+- `devices`: multi-device sequential request, 장비별 상태, 장비별 register map 연결 요구가 구체화되는 시점.
 - `test_scenarios`: Phase 5.
 - `register_maps`, `register_map_items`: Data Monitor 또는 Modbus data type 확장 시점.
 - `user_settings`: Settings 화면 또는 export path 설정 도입 시점.
